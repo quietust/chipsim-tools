@@ -32,7 +32,9 @@ function convert_svg ($in, $out)
 {
 	if (!is_file($in))
 	{
-		echo "Input file $in does not exist!\n";
+		if (is_file($out))
+			echo "Input file $in not found - assuming $out is up to date.\n";
+		else	echo "Input file $in does not exist!\n";
 		return;
 	}
 	if (is_file($out) && (filemtime($in) <= filemtime($out)))

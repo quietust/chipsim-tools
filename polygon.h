@@ -32,8 +32,12 @@
 
 // Height of the layer images, so we can flip them vertically
 // (it was simpler to hardcode it than to figure it out dynamically)
-// This was the value used for the 2A03
-#define	CHIP_HEIGHT	6256
+// The 2A03 used a height of 6256 and scale 2
+// Leave undefined in order to disable vertical flipping entirely
+//#define	CHIP_HEIGHT	10000
+#ifndef SCALE
+#define	SCALE	1
+#endif
 
 #include <vector>
 #include <string>
@@ -59,18 +63,21 @@ struct vertex
 	vertex () : x(0), y(0) { }
 };
 
+// Checks if two segments intersect
+// Second segment is offset by (0.5,0.5) to ensure that the segments can never overlap
 bool intersect (const vertex &p1, const vertex &p2, const vertex &q1, const vertex &q2)
 {
-	int64_t d = (q2.y - q1.y) * (p2.x - p1.x) - (q2.x - q1.x) * (p2.y - p1.y);
+	int64_t d = 2 * ((q2.y - q1.y) * (p2.x - p1.x) - (q2.x - q1.x) * (p2.y - p1.y));
 	if (d == 0)
 		return false;
 
-	int64_t _ua = (q2.x - q1.x) * (p1.y - q1.y) - (q2.y - q1.y) * (p1.x - q1.x);
-	int64_t _ub = (p2.x - p1.x) * (p1.y - q1.y) - (p2.y - p1.y) * (p1.x - q1.x);
+	int64_t _ua = (q2.x - q1.x) * (2 * (p1.y - q1.y) - 1) - (q2.y - q1.y) * (2 * (p1.x - q1.x) - 1);
+	int64_t _ub = (p2.x - p1.x) * (2 * (p1.y - q1.y) - 1) - (p2.y - p1.y) * (2 * (p1.x - q1.x) - 1);
 
 	long double ua = (long double)_ua / (long double)d;
 	long double ub = (long double)_ub / (long double)d;
 
+	// the two segments overlap - we should probably issue a warning if this happens, since it'll mess things up
 	if (((_ua == 0 || _ua == d) && (ub >= 0 && ub <= 1)) || ((_ub == 0 || _ub == d) && (ua >= 0 && ua <= 1)))
 		return false;
 
@@ -91,51 +98,56 @@ public:
 		for (int i = 0; i < copy.vertices.size(); i++)
 			add(copy.vertices[i].x, copy.vertices[i].y);
 	}
+	// Add a vertex to the polygon
 	void add (const int x, const int y)
 	{
 		vertices.push_back(vertex(x,y));
 	}
+	// Copy the first vertex to the end - makes it easier to iterate across them
 	void finish ()
 	{
 		vertices.push_back(vertices[0]);
 	}
-	int numVertices ()
+	int numVertices () const
 	{
 		return vertices.size() - 1;
 	}
 
-	bool isInside (const vertex &v) const
+	// Check if a particular point is located inside the polygon
+	bool isInside (const vertex &q1) const
 	{
 		int winding_number = 0;
 		// distant point at a slight angle
-		const vertex inf(v.x + 100000, v.y + 100);
+		const vertex q2(q1.x + 32768, q1.y + 128);
 
-		for (int i = 1; i < vertices.size(); i++)
+		for (int i = 0; i < numVertices(); i++)
 		{
-			const vertex &q1 = vertices[i-1];
-			const vertex &q2 = vertices[i];
-			if (intersect(v, inf, q1, q2))
+			const vertex &p1 = vertices[i];
+			const vertex &p2 = vertices[i + 1];
+			if (intersect(p1, p2, q1, q2))
 				winding_number++;
 		}
 		return (winding_number & 1);
 	}
 
+	// Check if the second polygon intersects with the first one
+	// The second polygon should always be the smaller one
 	bool overlaps (const polygon &other) const
 	{
 		// first, check if any of the target polygon's vertices are inside me
-		for (int i = 1; i < other.vertices.size(); i++)
+		for (int i = 0; i < other.numVertices(); i++)
 			if (isInside(other.vertices[i]))
 				return true;
 
-		// if not, then see if any of its vertices intersect with any of mine
-		for (int i = 1; i < vertices.size(); i++)
+		// if not, then see if any of its segments intersect with any of mine
+		for (int i = 0; i < numVertices(); i++)
 		{
-			const vertex &p1 = vertices[i-1];
-			const vertex &p2 = vertices[i];
-			for (int j = 1; j < other.vertices.size(); j++)
+			const vertex &p1 = vertices[i];
+			const vertex &p2 = vertices[i + 1];
+			for (int j = 0; j < other.numVertices(); j++)
 			{
-				const vertex &q1 = other.vertices[j-1];
-				const vertex &q2 = other.vertices[j];
+				const vertex &q1 = other.vertices[j];
+				const vertex &q2 = other.vertices[j + 1];
 				if (intersect(p1, p2, q1, q2))
 					return true;
 			}
@@ -143,8 +155,11 @@ public:
 		return false;
 	}
 
+	// Move the polygon
 	void move (const int x, const int y)
 	{
+		// Using vertices.size() instead of numVertices()
+		// because need to hit the duplicate vertex at the end
 		for (int i = 0; i < vertices.size(); i++)
 		{
 			vertices[i].x += x;
@@ -152,11 +167,12 @@ public:
 		}
 	}
 
+	// Calculate the polygon's bounding box
 	void bRect (rect &bbox) const
 	{
 		bbox.xmin = INT_MAX;	bbox.xmax = INT_MIN;
 		bbox.ymin = INT_MAX;	bbox.ymax = INT_MIN;
-		for (int i = 1; i < vertices.size(); i++)
+		for (int i = 0; i < numVertices(); i++)
 		{
 			bbox.xmin = min(bbox.xmin, vertices[i].x);
 			bbox.ymin = min(bbox.ymin, vertices[i].y);
@@ -165,8 +181,10 @@ public:
 		}
 	}
 
-	// Get a pair of vertices on either side of a segment
-	int midpoint (int idx, vertex &out, int d = 3)
+	// Find a vertex on the segment's perpendicular bisector
+	// Vertex is always "d" pixels from the outside edge of the polygon
+	// Also return the length of the segment, just because it's useful
+	int midpoint (int idx, vertex &out, int d = 3) const
 	{
 		const vertex &v1 = vertices[idx];
 		const vertex &v2 = vertices[idx + 1];
@@ -207,13 +225,14 @@ public:
 		return sqrt((v2.y - v1.y) * (v2.y - v1.y) + (v2.x - v1.x) * (v2.x - v1.x));
 	}
 
-	int area ()
+	// Calculate the area of the polygon
+	int area () const
 	{
 		int a = 0;
-		for (int i = 1; i < vertices.size(); i++)
+		for (int i = 0; i < numVertices(); i++)
 		{
-			const vertex &v1 = vertices[i - 1];
-			const vertex &v2 = vertices[i];
+			const vertex &v1 = vertices[i];
+			const vertex &v2 = vertices[i + 1];
 			a += (v1.x * v2.y) - (v2.x * v1.y);
 		}
 		if (a < 0)
@@ -221,13 +240,14 @@ public:
 		return a / 2;
 	}
 
-	string toString ()
+	// Generate a string containing a list of the polygon's vertex coordinates
+	string toString () const
 	{
 		string output;
 		char buf[256];
-		sprintf(buf, "%i,%i", vertices[1].x, vertices[1].y);
+		sprintf(buf, "%i,%i", vertices[0].x, vertices[0].y);
 		output += buf;
-		for (int i = 2; i < vertices.size(); i++)
+		for (int i = 1; i < numVertices(); i++)
 		{
 			sprintf(buf, ",%i,%i", vertices[i].x, vertices[i].y);
 			output += buf;
@@ -236,6 +256,16 @@ public:
 	}
 };
 
+// Layer numbers, as used by ChipSim Visualizer
+#define LAYER_METAL     0
+#define LAYER_DIFF      1
+#define LAYER_PROTECT   2
+#define LAYER_DIFF_GND  3
+#define LAYER_DIFF_VCC  4
+#define LAYER_POLY      5
+#define LAYER_SPECIAL   6
+
+// Circuit node, corresponds to segdefs.js
 struct node
 {
 	int id;
@@ -246,12 +276,14 @@ struct node
 	node () {}
 	bool collide (node *other)
 	{
+		// Do bounding box check before performing complicated polygon overlap check
 		if ((bbox.xmin > other->bbox.xmax) || (other->bbox.xmin > bbox.xmax) || (bbox.ymin > other->bbox.ymax) || (other->bbox.ymin > bbox.ymax))
 			return false;
 		return poly.overlaps(other->poly);
 	}
 };
 
+// Transistor definition, corresponds to transdefs.js
 struct transistor : public node
 {
 	int gate;
@@ -265,23 +297,16 @@ struct transistor : public node
 	bool depl;
 };
 
-#define LAYER_METAL     0
-#define LAYER_DIFF      1
-#define LAYER_PROTECT   2
-#define LAYER_DIFF_GND  3
-#define LAYER_DIFF_VCC  4
-#define LAYER_POLY      5
-#define LAYER_SPECIAL   6
-
+// Read vertex list for a particular layer and generate node definitions
 template<class T>
-void readnodes (const char *filename, vector<T *> &nodes, int layer)
+bool readnodes (const char *filename, vector<T *> &nodes, int layer)
 {
 	printf("Reading file: %s\n", filename);
 	FILE *in = fopen(filename, "rt");
 	if (!in)
 	{
 		fprintf(stderr, "Failed to open file!\n");
-		exit(2);
+		return false;
 	}
 	int x, y;
 	int r;
@@ -294,7 +319,8 @@ void readnodes (const char *filename, vector<T *> &nodes, int layer)
 		if (r != 2)
 		{
 			fprintf(stderr, "Error reading file!\n");
-			exit(2);
+			delete n;
+			return false;
 		}
 		if ((x == -1) && (y == -1))
 		{
@@ -308,20 +334,18 @@ void readnodes (const char *filename, vector<T *> &nodes, int layer)
 		}
 		else
 		{
-			// all coordinates are doubled, and "special" layers
-			// (vias, buried contacts, and transistors) are offset
-			// by a pixel so that the intersection checks
-			// don't get confused if 2 segments coincide
-
 			// since the ChipSim canvas is upside-down
 			// (0,0 is at bottom-left instead of top-left)
 			// we flip the image vertically
-			if (layer == LAYER_SPECIAL)
-				n->poly.add(x * 2 + 1, (CHIP_HEIGHT - y) * 2 + 1);
-			else	n->poly.add(x * 2, (CHIP_HEIGHT - y) * 2);
+#ifdef	CHIP_HEIGHT
+			n->poly.add(x * SCALE, (CHIP_HEIGHT - y) * SCALE);
+#else
+			n->poly.add(x * SCALE, y * SCALE);
+#endif
 		}
 	}
 	delete n;
+	return true;
 }
 
 #endif // POLYGON_H

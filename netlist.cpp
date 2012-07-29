@@ -36,6 +36,16 @@ using namespace std;
 // with the 2A03, enabling this causes some components to stop working
 //#define DELETE_PULLUPS	// delete depletion-load pullups instead of just flagging them as "weak"
 
+// don't output first/last lines of segdefs.js/transdefs.js
+//#define OUTPUT_PARTIAL_JS
+
+#ifndef FIRST_SEG_ID
+#define	FIRST_SEG_ID	1
+#endif
+#ifndef FIRST_TRANS_ID
+#define	FIRST_TRANS_ID	1
+#endif
+
 int main (int argc, char **argv)
 {
 	vector<node *> nodes;
@@ -47,15 +57,16 @@ int main (int argc, char **argv)
 	readnodes<node>("metal_vcc.dat", nodes, LAYER_METAL);
 	if (nodes.size() != 1)
 	{
-		fprintf(stderr, "Error: VCC plane contains more than one node!\n");
+		fprintf(stderr, "Error: metal_vcc.dat contains more than one node!\n");
 		return 1;
 	}
 	readnodes<node>("metal_gnd.dat", nodes, LAYER_METAL);
 	if (nodes.size() != 2)
 	{
-		fprintf(stderr, "Error: GND plane contains more than one node!\n");
+		fprintf(stderr, "Error: metal_gnd.dat contains more than one node!\n");
 		return 1;
 	}
+	// metal_start begins after VCC/GND, since those are handled separately
 	metal_start = nodes.size();
 	readnodes<node>("metal.dat", nodes, LAYER_METAL);
 	metal_end = poly_start = nodes.size();
@@ -64,9 +75,9 @@ int main (int argc, char **argv)
 	readnodes<node>("diffusion.dat", nodes, LAYER_DIFF);
 	diff_end = nodes.size();
 
-	int vcc = 10000;
-	int gnd = 10001;
-	int nextNode = 10002;
+	int nextNode = FIRST_SEG_ID;
+	int vcc = nextNode++;
+	int gnd = nextNode++;
 
 	vector<node *> vias, matched, unmatched;
 	node *via, *cur, *sub;
@@ -74,7 +85,9 @@ int main (int argc, char **argv)
 
 	readnodes<node>("vias.dat", vias, LAYER_SPECIAL);
 
-	printf("Parsing VCC plane - %i vias remaining\n", vias.size());
+	// VCC and GND are the two biggest nodes, accounting for most of the vias
+	// so report progress on them before proceeding to the rest of the chip
+	printf("Parsing VCC node - %i vias remaining\n", vias.size());
 	{
 		cur = nodes[0];
 		cur->id = vcc;
@@ -102,13 +115,13 @@ int main (int argc, char **argv)
 				}
 			}
 			if (via)
-				unmatched.push_back(via);
+				delete via; //unmatched.push_back(via);
 		}
 		vias = unmatched;
 		unmatched.clear();
 	}
 
-	printf("Parsing GND plane - %i vias remaining\n", vias.size());
+	printf("Parsing GND node - %i vias remaining\n", vias.size());
 	{
 		cur = nodes[1];
 		cur->id = gnd;
@@ -141,7 +154,7 @@ int main (int argc, char **argv)
 				}
 			}
 			if (via)
-				unmatched.push_back(via);
+				delete via; //unmatched.push_back(via);
 		}
 		vias = unmatched;
 		unmatched.clear();
@@ -177,8 +190,6 @@ int main (int argc, char **argv)
 						sub->id = cur->id;
 					else if (sub->id != cur->id)
 					{
-//						if (cur->id == (nextNode - 1))
-//							nextNode--;
 						int oldid = cur->id;
 						int newid = sub->id;
 						for (k = 0; k < nodes.size(); k++)
@@ -189,7 +200,7 @@ int main (int argc, char **argv)
 				}
 			}
 			if (via)
-				unmatched.push_back(via);
+				delete via; //unmatched.push_back(via);
 		}
 		vias = unmatched;
 		unmatched.clear();
@@ -237,8 +248,6 @@ int main (int argc, char **argv)
 						sub->id = cur->id;
 					else if (sub->id != cur->id)
 					{
-//						if (cur->id == (nextNode - 1))
-//							nextNode--;
 						int oldid = cur->id;
 						int newid = sub->id;
 						for (k = 0; k < nodes.size(); k++)
@@ -249,10 +258,11 @@ int main (int argc, char **argv)
 				}
 			}
 			if (via)
-				unmatched.push_back(via);
+				delete via; //unmatched.push_back(via);
 		}
 		vias = unmatched;
 		unmatched.clear();
+		// Not strictly correct, but it handles the input protection diodes
 		if (cur->id == gnd)
 			cur->layer = LAYER_PROTECT;
 	}
@@ -280,9 +290,11 @@ int main (int argc, char **argv)
 			cur->layer = LAYER_DIFF_GND;
 	}
 
+	// TODO - add an option to go through all of the nodes and make the ID numbers consecutive
+
 	readnodes<transistor>("transistors.dat", transistors, LAYER_SPECIAL);
 	transistor *cur_t;
-	nextNode = 10000;
+	nextNode = FIRST_TRANS_ID;
 
 	vector<node *> diffs;
 	int pullups = 0;
@@ -299,6 +311,12 @@ int main (int argc, char **argv)
 		cur_t = transistors[i];
 		cur_t->id = nextNode++;
 		cur_t->depl = false;
+		cur_t->width1 = 0;
+		cur_t->width2 = 0;
+		cur_t->length = 0;
+		cur_t->segments = 0;
+		cur_t->area = cur_t->poly.area();
+
 		for (j = poly_start; j < poly_end; j++)
 		{
 			sub = nodes[j];
@@ -312,10 +330,10 @@ int main (int argc, char **argv)
 		t2->poly = polygon(cur_t->poly);
 		t3->poly = polygon(cur_t->poly);
 		t4->poly = polygon(cur_t->poly);
-		t1->poly.move(-4, 0);
-		t2->poly.move(2, 0);
-		t3->poly.move(0, -4);
-		t4->poly.move(0, 2);
+		t1->poly.move(-3, 0);
+		t2->poly.move(3, 0);
+		t3->poly.move(0, -3);
+		t4->poly.move(0, 3);
 		t1->poly.bRect(t1->bbox);
 		t2->poly.bRect(t2->bbox);
 		t3->poly.bRect(t3->bbox);
@@ -327,9 +345,6 @@ int main (int argc, char **argv)
 			if (sub->collide(t1) || sub->collide(t2) || sub->collide(t3) || sub->collide(t4))
 				diffs.push_back(sub);
 		}
-		// once collision checks are done, remove the 1,1 offset
-		cur_t->poly.move(-1, -1);
-		cur_t->poly.bRect(cur_t->bbox);
 
 		if (diffs.size() != 2)
 		{
@@ -340,14 +355,20 @@ int main (int argc, char **argv)
 			continue;
 		}
 
+		// if any of the following are true, swap the terminals around
+		// 1. 1st terminal is connected to VCC
+		// 2. 1st terminal is connected to GND
+		// 3. 2nd terminal is connected to gate (generally gets caught by case #1)
+		if ((diffs[0]->id == vcc) || (diffs[0]->id == gnd) || (diffs[1]->id == cur_t->gate))
+		{
+			sub = diffs.front();
+			diffs.erase(diffs.begin());
+			diffs.push_back(sub);
+		}
+
 		cur_t->c1 = diffs[0]->id;
 		cur_t->c2 = diffs[1]->id;
 
-		cur_t->width1 = 0;
-		cur_t->width2 = 0;
-		cur_t->length = 0;
-		cur_t->segments = 0;
-		cur_t->area = cur_t->poly.area();
 		// calculate geometry
 		int segs0 = 0, segs1 = 0, segs2 = 0;
 		for (j = 0; j < cur_t->poly.numVertices(); j++)
@@ -380,17 +401,6 @@ int main (int argc, char **argv)
 		if (segs0)
 			cur_t->length /= segs0;
 		else	fprintf(stderr, "\rTransistor %i has zero length?\n", cur_t->id);
-
-		// if the gate is connected to the 2nd terminal, swap the terminals around
-		// the other one will probably end up being VCC or GND
-		if (cur_t->c2 == cur_t->gate)
-		{
-			cur_t->c2 = cur_t->c1;
-			cur_t->c1 = cur_t->gate;
-			j = cur_t->width2;
-			cur_t->width2 = cur_t->width1;
-			cur_t->width1 = j;
-		}
 
 		// if the gate is connected to one terminal and the other terminal is VCC/GND, assign pullup state to the other side
 		if (cur_t->c1 == cur_t->gate)
@@ -432,7 +442,9 @@ int main (int argc, char **argv)
 		fprintf(stderr, "Unable to create transdefs.js!\n");
 		return 1;
 	}
-//	fprintf(out, "var transdefs = [\n");
+#ifndef	OUTPUT_PARTIAL_JS
+	fprintf(out, "var transdefs = [\n");
+#endif
 	for (i = 0; i < transistors.size(); i++)
 	{
 		cur_t = transistors[i];
@@ -446,7 +458,9 @@ int main (int argc, char **argv)
 		fprintf(out, "['t%i',%i,%i,%i,[%i,%i,%i,%i],[%i,%i,%i,%i,%i],%s],\n", cur_t->id, cur_t->gate, cur_t->c1, cur_t->c2, cur_t->bbox.xmin, cur_t->bbox.xmax, cur_t->bbox.ymin, cur_t->bbox.ymax, cur_t->width1, cur_t->width2, cur_t->length, cur_t->segments, cur_t->area, cur_t->depl ? "true" : "false");
 		delete cur_t;
 	}
-//	fprintf(out, "]\n");
+#ifndef	OUTPUT_PARTIAL_JS
+	fprintf(out, "]\n");
+#endif
 	fclose(out);
 	transistors.clear();
 
@@ -457,7 +471,9 @@ int main (int argc, char **argv)
 		fprintf(stderr, "Unable to create segdefs.js!\n");
 		return 1;
 	}
-//	fprintf(out, "var segdefs = [\n");
+#ifndef	OUTPUT_PARTIAL_JS
+	fprintf(out, "var segdefs = [\n");
+#endif
 	// skip the main VCC and GND nodes, since those are huge and we don't really need them
 	for (i = 2; i < nodes.size(); i++)
 	{
@@ -465,7 +481,9 @@ int main (int argc, char **argv)
 		fprintf(out, "[%i,'%c',%i,%s],\n", cur->id, cur->pullup, cur->layer, cur->poly.toString().c_str());
 		delete cur;
 	}
-//	fprintf(out, "]\n");
+#ifndef	OUTPUT_PARTIAL_JS
+	fprintf(out, "]\n");
+#endif
 	fclose(out);
 	nodes.clear();
 
