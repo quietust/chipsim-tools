@@ -1,59 +1,40 @@
+/*
+ * Netlist Generator
+ * Originally designed for the Visual 2A03
+ *
+ * Copyright (c) 2011 QMT Productions
+ * All rights reserved
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
 #include <stdio.h>
 #include "polygon.h"
 
 #include <vector>
 using namespace std;
 
-#define	LAYER_METAL	0
-#define	LAYER_DIFF	1
-#define	LAYER_PROTECT	2
-#define	LAYER_DIFF_GND	3
-#define	LAYER_DIFF_VCC	4
-#define	LAYER_POLY	5
-#define	LAYER_SPECIAL	6
-
-template<class T>
-void readnodes (const char *filename, vector<T *> &nodes, int layer)
-{
-	printf("Reading file: %s\n", filename);
-	FILE *in = fopen(filename, "rt");
-	if (!in)
-	{
-		fprintf(stderr, "Failed to open file!\n");
-		exit(2);
-	}
-	int x, y;
-	int r;
-	T *n = new T;
-	while (1)
-	{
-		r = fscanf(in, "%d,%d", &x, &y);
-		if (feof(in))
-			break;
-		if (r != 2)
-		{
-			fprintf(stderr, "Error reading file!\n");
-			exit(2);
-		}
-		if ((x == -1) && (y == -1))
-		{
-			n->poly.finish();
-			n->id = 0;
-			n->pullup = '-';
-			n->layer = layer;
-			n->poly.bRect(n->bbox);
-			nodes.push_back(n);
-			n = new T;
-		}
-		else
-		{
-			if (layer == LAYER_SPECIAL)
-				n->poly.add(x * 2 + 1, 12512 - y * 2 + 1);
-			else	n->poly.add(x * 2, 12512 - y * 2);
-		}
-	}
-	delete n;
-}
+// with the 2A03, enabling this causes some components to stop working
+//#define DELETE_PULLUPS	// delete depletion-load pullups instead of just flagging them as "weak"
 
 int main (int argc, char **argv)
 {
@@ -150,6 +131,11 @@ int main (int argc, char **argv)
 				{
 					delete via;
 					via = NULL;
+					if (sub->id == vcc)
+					{
+						fprintf(stderr, "Error - node %i shorts VCC to GND!\n", i);
+						return 2;
+					}
 					sub->id = gnd;
 					break;
 				}
@@ -298,7 +284,7 @@ int main (int argc, char **argv)
 	transistor *cur_t;
 	nextNode = 10000;
 
-	vector<int> diffs;
+	vector<node *> diffs;
 	int pullups = 0;
 
 	node *t1 = new node;
@@ -312,6 +298,7 @@ int main (int argc, char **argv)
 //		printf("%i     \r", i);
 		cur_t = transistors[i];
 		cur_t->id = nextNode++;
+		cur_t->depl = false;
 		for (j = poly_start; j < poly_end; j++)
 		{
 			sub = nodes[j];
@@ -333,67 +320,108 @@ int main (int argc, char **argv)
 		t2->poly.bRect(t2->bbox);
 		t3->poly.bRect(t3->bbox);
 		t4->poly.bRect(t4->bbox);
+		diffs.clear();
 		for (j = diff_start; j < diff_end; j++)
 		{
 			sub = nodes[j];
 			if (sub->collide(t1) || sub->collide(t2) || sub->collide(t3) || sub->collide(t4))
-				diffs.push_back(sub->id);
+				diffs.push_back(sub);
 		}
-		if (diffs.size() == 2)
-		{
-			cur_t->c1 = diffs[0];
-			cur_t->c2 = diffs[1];
+		// once collision checks are done, remove the 1,1 offset
+		cur_t->poly.move(-1, -1);
+		cur_t->poly.bRect(cur_t->bbox);
 
-			// if the gate is connected to the 2nd terminal, swap the terminals around
-			// the other one will probably end up being VCC or GND
-
-			if (cur_t->c2 == cur_t->gate)
-			{
-				cur_t->c2 = cur_t->c1;
-				cur_t->c1 = cur_t->gate;
-			}
-			// if the gate is connected to one terminal and the other terminal is VCC/GND, assign pullup state to the other side
-			if (cur_t->c1 == cur_t->gate)
-			{
-				// gate == c1, c2 == VCC -> it's a pull-up resistor
-				// but don't do this if the other side is GND!
-				if ((cur_t->c2 == vcc) && (cur_t->c1 != gnd))
-				{
-					// assign pull-up state
-					for (j = metal_start; j < diff_end; j++)
-					{
-						if (nodes[j]->id == cur_t->gate)
-							nodes[j]->pullup = '+';
-					}
-					// then discard the transistor
-					cur_t->id = 0;
-					nextNode--;
-					pullups++;
-				}
-			}
-		}
-		else
+		if (diffs.size() != 2)
 		{
 			// assign dummy values
 			cur_t->c1 = gnd;
 			cur_t->c2 = gnd;
 			fprintf(stderr, "\rTransistor %i had wrong number of terminals (%i)\n", cur_t->id, diffs.size());
+			continue;
 		}
-		diffs.clear();
+
+		cur_t->c1 = diffs[0]->id;
+		cur_t->c2 = diffs[1]->id;
+
+		cur_t->width1 = 0;
+		cur_t->width2 = 0;
+		cur_t->length = 0;
+		cur_t->segments = 0;
+		cur_t->area = cur_t->poly.area();
+		// calculate geometry
+		int segs0 = 0, segs1 = 0, segs2 = 0;
+		for (j = 0; j < cur_t->poly.numVertices(); j++)
+		{
+			vertex v;
+			int len = cur_t->poly.midpoint(j, v);
+			if (diffs[0]->poly.isInside(v))
+			{
+				cur_t->width1 += len;
+				segs1++;
+			}
+			else if (diffs[1]->poly.isInside(v))
+			{
+				cur_t->width2 += len;
+				segs2++;
+			}
+			else
+			{
+				cur_t->length += len;
+				segs0++;
+			}
+		}
+		if (segs1 == segs2)
+			cur_t->segments = segs1;
+		else
+		{
+			fprintf(stderr, "\rTransistor %i had inconsistent number of segments on each side (%i/%i)!\n", cur_t->id, segs1, segs2);
+			cur_t->segments = max(segs1, segs2);
+		}
+		if (segs0)
+			cur_t->length /= segs0;
+		else	fprintf(stderr, "\rTransistor %i has zero length?\n", cur_t->id);
+
+		// if the gate is connected to the 2nd terminal, swap the terminals around
+		// the other one will probably end up being VCC or GND
+		if (cur_t->c2 == cur_t->gate)
+		{
+			cur_t->c2 = cur_t->c1;
+			cur_t->c1 = cur_t->gate;
+			j = cur_t->width2;
+			cur_t->width2 = cur_t->width1;
+			cur_t->width1 = j;
+		}
+
+		// if the gate is connected to one terminal and the other terminal is VCC/GND, assign pullup state to the other side
+		if (cur_t->c1 == cur_t->gate)
+		{
+			// gate == c1, c2 == VCC -> it's a pull-up resistor
+			// but don't do this if the other side is GND!
+			if ((cur_t->c2 == vcc) && (cur_t->c1 != gnd))
+			{
+				// assign pull-up state
+				for (j = metal_start; j < diff_end; j++)
+				{
+					if (nodes[j]->id == cur_t->gate)
+						nodes[j]->pullup = '+';
+				}
+				cur_t->depl = true;
+#ifdef	DELETE_PULLUPS
+				// if we're not including depletion-mode transistors
+				// then reuse the ID number
+				nextNode--;
+#endif
+				pullups++;
+			}
+		}
 	}
+	diffs.clear();
 	printf("%i transistors turned out to be pull-up resistors\n", pullups);
 
 	delete t1;
 	delete t2;
 	delete t3;
 	delete t4;
-
-	for (i = 0; i < transistors.size(); i++)
-	{
-		cur_t = transistors[i];
-		cur_t->poly.move(-1, -1);
-		cur_t->poly.bRect(cur_t->bbox);
-	}
 
 	FILE *out;
 
@@ -408,9 +436,14 @@ int main (int argc, char **argv)
 	for (i = 0; i < transistors.size(); i++)
 	{
 		cur_t = transistors[i];
-		// skip pullups
-		if (cur_t->id)
-			fprintf(out, "['t%i',%i,%i,%i,[%i,%i,%i,%i]],\n", cur_t->id, cur_t->gate, cur_t->c1, cur_t->c2, cur_t->bbox.xmin, cur_t->bbox.xmax, cur_t->bbox.ymin, cur_t->bbox.ymax);
+#ifdef	DELETE_PULLUPS
+		if (cur_t->depl)
+		{
+			delete cur_t;
+			continue;
+		}
+#endif
+		fprintf(out, "['t%i',%i,%i,%i,[%i,%i,%i,%i],[%i,%i,%i,%i,%i],%s],\n", cur_t->id, cur_t->gate, cur_t->c1, cur_t->c2, cur_t->bbox.xmin, cur_t->bbox.xmax, cur_t->bbox.ymin, cur_t->bbox.ymax, cur_t->width1, cur_t->width2, cur_t->length, cur_t->segments, cur_t->area, cur_t->depl ? "true" : "false");
 		delete cur_t;
 	}
 //	fprintf(out, "]\n");
@@ -425,7 +458,7 @@ int main (int argc, char **argv)
 		return 1;
 	}
 //	fprintf(out, "var segdefs = [\n");
-	// skip the main VCC and GND nodes, since those are huge
+	// skip the main VCC and GND nodes, since those are huge and we don't really need them
 	for (i = 2; i < nodes.size(); i++)
 	{
 		cur = nodes[i];
