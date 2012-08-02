@@ -3,7 +3,7 @@
  * Netlist Generator Helper
  * Converts SVG outlines of polygons into vertex lists used by other tools
  *
- * Copyright (c) 2011 QMT Productions
+ * Copyright (c) 2011-2012 QMT Productions
  * All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without

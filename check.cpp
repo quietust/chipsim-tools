@@ -2,7 +2,7 @@
  * Netlist Generator Helper
  * Checks validity of vias and buried contacts
  *
- * Copyright (c) 2011 QMT Productions
+ * Copyright (c) 2011-2012 QMT Productions
  * All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without

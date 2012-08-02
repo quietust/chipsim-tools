@@ -2,7 +2,7 @@
  * Netlist Generator - Library
  * Tracks shape and location of circuit segments and detects collisions
  *
- * Copyright (c) 2011 QMT Productions
+ * Copyright (c) 2011-2012 QMT Productions
  * All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without
@@ -273,7 +273,12 @@ struct node
 	int layer;
 	polygon poly;
 	rect bbox;
-	node () {}
+	node ()
+	{
+		id = 0;
+		pullup = '-';
+		layer = -1;
+	}
 	bool collide (node *other)
 	{
 		// Do bounding box check before performing complicated polygon overlap check
@@ -295,6 +300,15 @@ struct transistor : public node
 	int segments;
 	int area;
 	bool depl;
+	transistor ()
+	{
+		gate = c1 = c2 = 0;
+		width1 = width2 = 0;
+		length = 0;
+		segments = 0;
+		area = 0;
+		depl = false;
+	}
 };
 
 // Read vertex list for a particular layer and generate node definitions
@@ -325,8 +339,6 @@ bool readnodes (const char *filename, vector<T *> &nodes, int layer)
 		if ((x == -1) && (y == -1))
 		{
 			n->poly.finish();
-			n->id = 0;
-			n->pullup = '-';
 			n->layer = layer;
 			n->poly.bRect(n->bbox);
 			nodes.push_back(n);

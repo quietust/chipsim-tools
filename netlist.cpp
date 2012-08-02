@@ -2,7 +2,7 @@
  * Netlist Generator
  * Originally designed for the Visual 2A03
  *
- * Copyright (c) 2011 QMT Productions
+ * Copyright (c) 2011-2012 QMT Productions
  * All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without
@@ -108,14 +108,11 @@ int main (int argc, char **argv)
 				sub = nodes[i];
 				if (sub->collide(via))
 				{
-					delete via;
-					via = NULL;
 					sub->id = vcc;
 					break;
 				}
 			}
-			if (via)
-				delete via; //unmatched.push_back(via);
+			delete via;
 		}
 		vias = unmatched;
 		unmatched.clear();
@@ -142,8 +139,6 @@ int main (int argc, char **argv)
 				sub = nodes[i];
 				if (sub->collide(via))
 				{
-					delete via;
-					via = NULL;
 					if (sub->id == vcc)
 					{
 						fprintf(stderr, "Error - node %i shorts VCC to GND!\n", i);
@@ -153,8 +148,7 @@ int main (int argc, char **argv)
 					break;
 				}
 			}
-			if (via)
-				delete via; //unmatched.push_back(via);
+			delete via;
 		}
 		vias = unmatched;
 		unmatched.clear();
@@ -184,12 +178,12 @@ int main (int argc, char **argv)
 				sub = nodes[j];
 				if (sub->collide(via))
 				{
-					delete via;
-					via = NULL;
 					if (sub->id == 0)
 						sub->id = cur->id;
 					else if (sub->id != cur->id)
 					{
+						// assume the ID of the node we just encountered
+						// since it's going to have the lower ID number
 						int oldid = cur->id;
 						int newid = sub->id;
 						for (k = 0; k < nodes.size(); k++)
@@ -199,12 +193,12 @@ int main (int argc, char **argv)
 					break;
 				}
 			}
-			if (via)
-				delete via; //unmatched.push_back(via);
+			delete via;
 		}
 		vias = unmatched;
 		unmatched.clear();
 	}
+
 	if (!vias.empty())
 	{
 		printf("%i vias were not matched!\n", vias.size());
@@ -242,12 +236,12 @@ int main (int argc, char **argv)
 				sub = nodes[j];
 				if (sub->collide(via))
 				{
-					delete via;
-					via = NULL;
 					if (sub->id == 0)
 						sub->id = cur->id;
 					else if (sub->id != cur->id)
 					{
+						// assume the ID of the node we just encountered
+						// since it's going to have the lower ID number
 						int oldid = cur->id;
 						int newid = sub->id;
 						for (k = 0; k < nodes.size(); k++)
@@ -257,8 +251,7 @@ int main (int argc, char **argv)
 					break;
 				}
 			}
-			if (via)
-				delete via; //unmatched.push_back(via);
+			delete via;
 		}
 		vias = unmatched;
 		unmatched.clear();
@@ -310,11 +303,6 @@ int main (int argc, char **argv)
 //		printf("%i     \r", i);
 		cur_t = transistors[i];
 		cur_t->id = nextNode++;
-		cur_t->depl = false;
-		cur_t->width1 = 0;
-		cur_t->width2 = 0;
-		cur_t->length = 0;
-		cur_t->segments = 0;
 		cur_t->area = cur_t->poly.area();
 
 		for (j = poly_start; j < poly_end; j++)
@@ -351,7 +339,7 @@ int main (int argc, char **argv)
 			// assign dummy values
 			cur_t->c1 = gnd;
 			cur_t->c2 = gnd;
-			fprintf(stderr, "\rTransistor %i had wrong number of terminals (%i)\n", cur_t->id, diffs.size());
+			fprintf(stderr, "Transistor %i had wrong number of terminals (%i)\n", cur_t->id, diffs.size());
 			continue;
 		}
 
@@ -395,12 +383,12 @@ int main (int argc, char **argv)
 			cur_t->segments = segs1;
 		else
 		{
-			fprintf(stderr, "\rTransistor %i had inconsistent number of segments on each side (%i/%i)!\n", cur_t->id, segs1, segs2);
+			fprintf(stderr, "Transistor %i had inconsistent number of segments on each side (%i/%i)!\n", cur_t->id, segs1, segs2);
 			cur_t->segments = max(segs1, segs2);
 		}
 		if (segs0)
 			cur_t->length /= segs0;
-		else	fprintf(stderr, "\rTransistor %i has zero length?\n", cur_t->id);
+		else	fprintf(stderr, "Transistor %i has zero length?\n", cur_t->id);
 
 		// if the gate is connected to one terminal and the other terminal is VCC/GND, assign pullup state to the other side
 		if (cur_t->c1 == cur_t->gate)
