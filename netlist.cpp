@@ -182,10 +182,9 @@ int main (int argc, char **argv)
 						sub->id = cur->id;
 					else if (sub->id != cur->id)
 					{
-						// assume the ID of the node we just encountered
-						// since it's going to have the lower ID number
-						int oldid = cur->id;
-						int newid = sub->id;
+						// merge the two nodes together, assuming the lower ID number of the two
+						int oldid = max(cur->id, sub->id);
+						int newid = min(cur->id, sub->id);
 						for (k = 0; k < nodes.size(); k++)
 							if (nodes[k]->id == oldid)
 								nodes[k]->id = newid;
@@ -240,10 +239,9 @@ int main (int argc, char **argv)
 						sub->id = cur->id;
 					else if (sub->id != cur->id)
 					{
-						// assume the ID of the node we just encountered
-						// since it's going to have the lower ID number
-						int oldid = cur->id;
-						int newid = sub->id;
+						// merge the two nodes together, assuming the lower ID number of the two
+						int oldid = max(cur->id, sub->id);
+						int newid = min(cur->id, sub->id);
 						for (k = 0; k < nodes.size(); k++)
 							if (nodes[k]->id == oldid)
 								nodes[k]->id = newid;
