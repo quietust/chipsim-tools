@@ -42,7 +42,7 @@ function convert_svg ($in, $out)
 		echo "$out is up to date, skipping.\n";
 		return;
 	}
-	echo "Parsing $in...\n";
+	echo "Parsing $in...";
 	$data = '';
 	$raw = file_get_contents($in);
 	$xml = new XMLReader();
@@ -57,6 +57,7 @@ function convert_svg ($in, $out)
 	}
 	$raw = preg_split('/[\s]+/', $raw);
 	$i = 0;
+	echo "converting...";
 	$cmd = $raw[$i++];
 	while ($i < count($raw))
 	{
@@ -88,6 +89,7 @@ function convert_svg ($in, $out)
 			die("Unknown command $cmd!");
 		}
 	}
+	echo "done!\n";
 	file_put_contents($out, $data);
 }
 
