@@ -141,7 +141,7 @@ int main (int argc, char **argv)
 				{
 					if (sub->id == vcc)
 					{
-						fprintf(stderr, "Error - node %i shorts VCC to GND!\n", i);
+						fprintf(stderr, "Error - via %i (%s) shorts VCC to GND!\n", i, via->poly.toString().c_str());
 						return 2;
 					}
 					sub->id = gnd;
@@ -185,6 +185,11 @@ int main (int argc, char **argv)
 						// merge the two nodes together, assuming the lower ID number of the two
 						int oldid = max(cur->id, sub->id);
 						int newid = min(cur->id, sub->id);
+						if ((oldid == 2) && (newid == 1))
+						{
+							fprintf(stderr, "Error - via %i (%s) shorts VCC to GND!\n", i, via->poly.toString().c_str());
+							return 2;
+						}
 						for (k = 0; k < nodes.size(); k++)
 							if (nodes[k]->id == oldid)
 								nodes[k]->id = newid;
@@ -242,6 +247,11 @@ int main (int argc, char **argv)
 						// merge the two nodes together, assuming the lower ID number of the two
 						int oldid = max(cur->id, sub->id);
 						int newid = min(cur->id, sub->id);
+						if ((oldid == 2) && (newid == 1))
+						{
+							fprintf(stderr, "Error - buried contact %i (%s) shorts VCC to GND!\n", i, via->poly.toString().c_str());
+							return 2;
+						}
 						for (k = 0; k < nodes.size(); k++)
 							if (nodes[k]->id == oldid)
 								nodes[k]->id = newid;
