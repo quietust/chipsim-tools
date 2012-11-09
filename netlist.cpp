@@ -265,6 +265,8 @@ int main (int argc, char **argv)
 		unmatched.clear();
 		// Not strictly correct, but it handles the input protection diodes
 		if (cur->id == gnd)
+// polysilicon hardwired to VCC is doesn't show up highlighted in ChipSim
+//		if (cur->id == vcc)
 			cur->layer = LAYER_PROTECT;
 	}
 	if (!vias.empty())
@@ -397,6 +399,8 @@ int main (int argc, char **argv)
 		if (segs0)
 			cur_t->length /= segs0;
 		else	fprintf(stderr, "Transistor %i has zero length?\n", cur_t->id);
+		if (cur_t->c1 == vcc && cur_t->c2 == gnd)
+			fprintf(stderr, "Transistor %i (%s) connects VCC to GND!\n", cur_t->id, cur_t->poly.toString().c_str());
 
 		// if the gate is connected to one terminal and the other terminal is VCC/GND, assign pullup state to the other side
 		if (cur_t->c1 == cur_t->gate)
