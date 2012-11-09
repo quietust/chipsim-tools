@@ -56,11 +56,11 @@ int main (int argc, char **argv)
 	readnodes<node>("metal.dat", nodes, LAYER_METAL);
 	metal_end = nodes.size();
 
-	printf("Checking for hollow metal segments (%i-%i)\n", metal_start, metal_end - 1);
-	for (i = metal_start; i < metal_end; i++)
+	printf("Checking for hollow metal segments (%i-%i)\n", metal_start + 2, metal_end - 1);
+	for (i = metal_start + 2; i < metal_end; i++)
 	{
 		cur = nodes[i];
-		for (j = metal_start; j < metal_end; j++)
+		for (j = metal_start + 2; j < metal_end; j++)
 		{
 			if (i == j)
 				continue;
