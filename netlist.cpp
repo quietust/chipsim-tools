@@ -265,8 +265,8 @@ int main (int argc, char **argv)
 		unmatched.clear();
 		// Not strictly correct, but it handles the input protection diodes
 		if (cur->id == gnd)
-// polysilicon hardwired to VCC is doesn't show up highlighted in ChipSim
-//		if (cur->id == vcc)
+		// alt usage: polysilicon hardwired to VCC doesn't show up highlighted in ChipSim
+		// if (cur->id == vcc)
 			cur->layer = LAYER_PROTECT;
 	}
 	if (!vias.empty())
@@ -344,7 +344,27 @@ int main (int argc, char **argv)
 				diffs.push_back(sub);
 		}
 
-		if (diffs.size() != 2)
+		cur_t->c1 = cur_t->c2 = -1;
+		for (j = 0; j < diffs.size(); j++)
+		{
+			if (cur_t->c1 == -1)
+				cur_t->c1 = diffs[j]->id;
+			else
+			{
+				if (cur_t->c1 == diffs[j]->id)
+					continue;
+				if (cur_t->c2 == -1)
+					cur_t->c2 = diffs[j]->id;
+				else
+				{
+					if (cur_t->c2 == diffs[j]->id)
+						continue;
+					else	break;
+				}
+			}
+		}
+
+		if ((j != diffs.size()) || (cur_t->c1 == -1) || (cur_t->c2 == -1))
 		{
 			// assign dummy values
 			cur_t->c1 = gnd;
@@ -357,15 +377,12 @@ int main (int argc, char **argv)
 		// 1. 1st terminal is connected to VCC
 		// 2. 1st terminal is connected to GND
 		// 3. 2nd terminal is connected to gate (generally gets caught by case #1)
-		if ((diffs[0]->id == vcc) || (diffs[0]->id == gnd) || (diffs[1]->id == cur_t->gate))
+		if ((cur_t->c1 == vcc) || (cur_t->c1 == gnd) || (cur_t->c2 == cur_t->gate))
 		{
-			sub = diffs.front();
-			diffs.erase(diffs.begin());
-			diffs.push_back(sub);
+			j = cur_t->c2;
+			cur_t->c2 = cur_t->c1;
+			cur_t->c1 = j;
 		}
-
-		cur_t->c1 = diffs[0]->id;
-		cur_t->c2 = diffs[1]->id;
 
 		// calculate geometry
 		int segs0 = 0, segs1 = 0, segs2 = 0;
@@ -373,17 +390,25 @@ int main (int argc, char **argv)
 		{
 			vertex v;
 			int len = cur_t->poly.midpoint(j, v);
-			if (diffs[0]->poly.isInside(v))
+			for (k = 0; k < diffs.size(); k++)
 			{
-				cur_t->width1 += len;
-				segs1++;
+				if (diffs[k]->poly.isInside(v))
+				{
+					if (diffs[k]->id == cur_t->c1)
+					{
+						cur_t->width1 += len;
+						segs1++;
+					}
+					else if (diffs[k]->id == cur_t->c2)
+					{
+						cur_t->width2 += len;
+						segs2++;
+					}
+					else	fprintf(stderr, "Transistor %i diffusion node %i doesn't belong to either side (%i/%i)?\n", cur_t->id, diffs[k]->id, cur_t->c1, cur_t->c2);
+					break;
+				}
 			}
-			else if (diffs[1]->poly.isInside(v))
-			{
-				cur_t->width2 += len;
-				segs2++;
-			}
-			else
+			if (k == diffs.size())
 			{
 				cur_t->length += len;
 				segs0++;
