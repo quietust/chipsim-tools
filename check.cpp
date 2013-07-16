@@ -76,7 +76,7 @@ int main (int argc, char **argv)
 	readnodes<node>("diffusion.dat", nodes, LAYER_DIFF);
 	diff_end = nodes.size();
 
-	printf("Checking for hollow diffusion segments (%i-%i)\n", diff_start, diff_end - 1);
+	printf("Checking diffusion segments (%i-%i)\n", diff_start, diff_end - 1);
 	for (i = diff_start; i < diff_end; i++)
 	{
 		cur = nodes[i];
@@ -133,6 +133,26 @@ int main (int argc, char **argv)
 			printf("Invalid number of connections %i for buried contact %i (%s)\n", hits, i, sub->poly.toString().c_str());
 	}
 	vias.clear();
+
+	readnodes<node>("transistors.dat", vias, LAYER_SPECIAL);
+
+	printf("Checking for bad transistors (%i total)\n", vias.size());
+	for (i = 0; i < vias.size(); i++)
+	{
+		int hits = 0;
+		sub = vias[i];
+		int area = sub->poly.area();
+		if (area < 15)
+			printf("Transistor %i (%s) is unusually small (%i)!\n", i, sub->poly.toString().c_str(), area);
+		for (j = poly_start; j < poly_end; j++)
+		{
+			cur = nodes[j];
+			if (cur->collide(sub))
+				hits++;
+		}
+		if (hits != 1)
+			printf("Transistor %i (%s) connects to wrong number of polysilicon nodes (%i)\n", i, sub->poly.toString().c_str(), hits);
+	}
 
 	printf("Done!\n");
 }
