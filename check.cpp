@@ -38,7 +38,7 @@ int main (int argc, char **argv)
 	for (i = metal_start + 2; i < metal_end; i++)
 	{
 		cur = nodes[i];
-		int area = cur->area();
+		int area = cur->poly.area();
 		if (area < 16)
 			printf("Metal segment %i (%s) is unusually small (%i)!\n", i, cur->poly.toString().c_str(), area);
 		for (j = metal_start + 2; j < metal_end; j++)
@@ -59,7 +59,7 @@ int main (int argc, char **argv)
 	for (i = poly_start; i < poly_end; i++)
 	{
 		cur = nodes[i];
-		int area = cur->area();
+		int area = cur->poly.area();
 		if (area < 16)
 			printf("Polysilicon segment %i (%s) is unusually small (%i)!\n", i, cur->poly.toString().c_str(), area);
 		for (j = poly_start; j < poly_end; j++)
@@ -80,10 +80,10 @@ int main (int argc, char **argv)
 	for (i = diff_start; i < diff_end; i++)
 	{
 		cur = nodes[i];
-		int area = cur->area();
+		int area = cur->poly.area();
 		if (area < 16)
 			printf("Diffusion segment %i (%s) is unusually small (%i)!\n", i, cur->poly.toString().c_str(), area);
-		for (j = diff_start; j < liff_end; j++)
+		for (j = diff_start; j < diff_end; j++)
 		{
 			if (i == j)
 				continue;
@@ -99,7 +99,7 @@ int main (int argc, char **argv)
 	{
 		int hits = 0;
 		sub = vias[i];
-		int area = sub->area();
+		int area = sub->poly.area();
 		if (area < 9)
 			printf("Via %i (%s) is unusually small (%i)!\n", i, sub->poly.toString().c_str(), area);
 		for (j = metal_start; j < diff_end; j++)
@@ -120,7 +120,7 @@ int main (int argc, char **argv)
 	{
 		int hits = 0;
 		sub = vias[i];
-		int area = sub->area();
+		int area = sub->poly.area();
 		if (area < 16)
 			printf("Buried contact %i (%s) is unusually small (%i)!\n", i, sub->poly.toString().c_str(), area);
 		for (j = poly_start; j < diff_end; j++)
