@@ -22,3 +22,5 @@ Used by the above two programs, keeps track of the shape and location of each se
 Usage
 =====
 Using GIMP, select all segments in each layer image (using either "Alpha to Selection" or "Select by Color"), perform "Selection to Path" with advanced settings (Corner Threshold:150, Line Reversion Threshold:0.200, Line Threshold:2.00, and optionally Corner Surround:3), export path to SVG, then run "convertsvg.php". If the SVG happened to contain any non-straight lines, it'll complain - go back into GIMP and fix the problem segments to make them more square, or recreate the Path with more strict settings. Once the SVG files are converted, run "check", verify that there are no errors, then run "netlist".
+
+Recognized filenames are: 'metal_pwr' + 'metal_gnd' + 'metal', 'poly_pwr' + 'poly_gnd' + 'poly', 'diff_pwr' + 'diff_gnd' + 'diff', 'vias', 'buried', and 'trans'. At least one set of 'pwr'/'gnd' nodes must be provided.

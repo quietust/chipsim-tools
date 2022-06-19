@@ -24,7 +24,7 @@ function convert_svg ($in, $out)
 	$data = '';
 	$raw = file_get_contents($in);
 	$xml = new XMLReader();
-	$xml->XML($raw);
+	$xml->XML($raw, null, LIBXML_PARSEHUGE);
 	while (1)
 	{
 		$xml->read() or die('Unable to locate image data!');
@@ -72,14 +72,10 @@ function convert_svg ($in, $out)
 }
 
 $layers = array(
-	'metal_pwr',
-	'metal_gnd',
-	'metal',
-	'vias',
-	'polysilicon',
-	'buried_contacts',
-	'diffusion',
-	'transistors',
+	'metal_pwr', 'metal_gnd', 'metal',
+	'poly_pwr', 'poly_gnd', 'poly',
+	'diff_pwr', 'diff_gnd', 'diff',
+	'vias', 'buried', 'trans',
 );
 foreach ($layers as $layer)
 	convert_svg($layer .'.svg', $layer .'.dat');

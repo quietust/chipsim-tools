@@ -19,8 +19,7 @@
 
 #include <vector>
 #include <string>
-using namespace std;
-#include <math.h>
+#include <algorithm>
 
 #ifdef _MSC_VER
 typedef __int64 int64_t;
@@ -68,7 +67,7 @@ bool intersect (const vertex &p1, const vertex &p2, const vertex &q1, const vert
 class polygon
 {
 protected:
-	vector<vertex> vertices;
+	std::vector<vertex> vertices;
 public:
 	polygon() {}
 	polygon (const polygon &copy)
@@ -152,10 +151,10 @@ public:
 		bbox.ymin = INT_MAX;	bbox.ymax = INT_MIN;
 		for (int i = 0; i < numVertices(); i++)
 		{
-			bbox.xmin = min(bbox.xmin, vertices[i].x);
-			bbox.ymin = min(bbox.ymin, vertices[i].y);
-			bbox.xmax = max(bbox.xmax, vertices[i].x);
-			bbox.ymax = max(bbox.ymax, vertices[i].y);
+			bbox.xmin = std::min(bbox.xmin, vertices[i].x);
+			bbox.ymin = std::min(bbox.ymin, vertices[i].y);
+			bbox.xmax = std::max(bbox.xmax, vertices[i].x);
+			bbox.ymax = std::max(bbox.ymax, vertices[i].y);
 		}
 	}
 
@@ -219,10 +218,10 @@ public:
 	}
 
 	// Generate a string containing a list of the polygon's vertex coordinates
-	string toString () const
+	std::string toString () const
 	{
-		string output;
-		char buf[256];
+		std::string output;
+		char buf[48];
 		sprintf(buf, "%i,%i", vertices[0].x, vertices[0].y);
 		output += buf;
 		for (int i = 1; i < numVertices(); i++)
@@ -291,7 +290,7 @@ struct transistor : public node
 
 // Read vertex list for a particular layer and generate node definitions
 template<class T>
-bool readnodes (const char *filename, vector<T *> &nodes, int layer)
+bool readnodes (const char *filename, std::vector<T *> &nodes, int layer, int force_id = -1)
 {
 	printf("Reading file: %s\n", filename);
 	FILE *in = fopen(filename, "rt");
@@ -318,6 +317,8 @@ bool readnodes (const char *filename, vector<T *> &nodes, int layer)
 		{
 			n->poly.finish();
 			n->layer = layer;
+			if (force_id != -1)
+				n->id = force_id;
 			n->poly.bRect(n->bbox);
 			nodes.push_back(n);
 			n = new T;

@@ -2,7 +2,7 @@
  * Netlist Generator
  * Originally designed for the Visual 2A03
  *
- * Copyright 2011-2012 QMT Productions
+ * Copyright 2011-2022 QMT Productions
  */
 
 #include <stdio.h>
@@ -26,61 +26,64 @@ int main (int argc, char **argv)
 	vector<node *> nodes;
 	vector<transistor *> transistors;
 
-	int metal_start, metal_end;
-	int poly_start, poly_end;
-	int diff_start, diff_end;
-	readnodes<node>("metal_pwr.dat", nodes, LAYER_METAL);
-	if (nodes.size() != 1)
-	{
-		fprintf(stderr, "Error: metal_pwr.dat contains more than one node!\n");
-		return 1;
-	}
-	readnodes<node>("metal_gnd.dat", nodes, LAYER_METAL);
-	if (nodes.size() != 2)
-	{
-		fprintf(stderr, "Error: metal_gnd.dat contains more than one node!\n");
-		return 1;
-	}
-	// metal_start begins after PWR/GND, since those are handled separately
-	metal_start = nodes.size();
-	readnodes<node>("metal.dat", nodes, LAYER_METAL);
-	metal_end = poly_start = nodes.size();
-	readnodes<node>("polysilicon.dat", nodes, LAYER_POLY);
-	poly_end = diff_start = nodes.size();
-	readnodes<node>("diffusion.dat", nodes, LAYER_DIFF);
-	diff_end = nodes.size();
-
 	int nextNode = FIRST_SEG_ID;
+	// Note: PWR must be less than GND, or other parts of this tool will fail
 	int pwr = nextNode++;
 	int gnd = nextNode++;
 
+	size_t metal_start, metal_end;
+	size_t poly_start, poly_end;
+	size_t diff_start, diff_end;
+
+	metal_start = nodes.size();
+	readnodes<node>("metal_pwr.dat", nodes, LAYER_METAL, pwr);
+	readnodes<node>("metal_gnd.dat", nodes, LAYER_METAL, gnd);
+	readnodes<node>("metal.dat", nodes, LAYER_METAL);
+	metal_end = nodes.size();
+
+	poly_start = nodes.size();
+	readnodes<node>("poly_pwr.dat", nodes, LAYER_POLY, pwr);
+	readnodes<node>("poly_gnd.dat", nodes, LAYER_POLY, gnd);
+	readnodes<node>("poly.dat", nodes, LAYER_POLY);
+	poly_end = nodes.size();
+
+	diff_start = nodes.size();
+	readnodes<node>("diff_pwr.dat", nodes, LAYER_DIFF, pwr);
+	readnodes<node>("diff_gnd.dat", nodes, LAYER_DIFF, gnd);
+	readnodes<node>("diff.dat", nodes, LAYER_DIFF);
+	diff_end = nodes.size();
+
 	vector<node *> vias, matched, unmatched;
 	node *via, *cur, *sub;
-	int i, j, k;
+	size_t i, j, k;
 
 	readnodes<node>("vias.dat", vias, LAYER_SPECIAL);
 
-	// PWR and GND are the two biggest nodes, accounting for most of the vias
-	// so report progress on them before proceeding to the rest of the chip
-	printf("Parsing PWR node - %i vias remaining\n", vias.size());
+	// PWR and GND are the two biggest metal nodes, accounting for most of the vias
+	// so process them all first so the rest of the nodes have fewer vias to check
+	printf("Parsing metal PWR nodes - %zi vias remaining\n", vias.size());
+	for (i = metal_start; i < metal_end; i++)
 	{
-		cur = nodes[0];
-		cur->id = pwr;
-		for (i = 0; i < vias.size(); i++)
+		cur = nodes[i];
+		if (cur->id != pwr)
+			continue;
+		for (j = 0; j < vias.size(); j++)
 		{
-			via = vias[i];
+			via = vias[j];
 			if (cur->collide(via))
 				matched.push_back(via);
 			else	unmatched.push_back(via);
 		}
 		while (!matched.empty())
 		{
-//			printf("%i    \r", matched.size());
+//			printf("%zi    \r", matched.size());
 			via = matched.back();
 			matched.pop_back();
-			for (i = poly_start; i < diff_end; i++)
+			for (j = poly_start; j < diff_end; j++)
 			{
-				sub = nodes[i];
+				if (i == j)
+					continue;
+				sub = nodes[j];
 				if (sub->collide(via))
 				{
 					sub->id = pwr;
@@ -93,30 +96,34 @@ int main (int argc, char **argv)
 		unmatched.clear();
 	}
 
-	printf("Parsing GND node - %i vias remaining\n", vias.size());
+	printf("Parsing metal GND nodes - %zi vias remaining\n", vias.size());
+	for (i = metal_start; i < metal_end; i++)
 	{
-		cur = nodes[1];
-		cur->id = gnd;
-		for (i = 0; i < vias.size(); i++)
+		cur = nodes[i];
+		if (cur->id != gnd)
+			continue;
+		for (j = 0; j < vias.size(); j++)
 		{
-			via = vias[i];
+			via = vias[j];
 			if (cur->collide(via))
 				matched.push_back(via);
 			else	unmatched.push_back(via);
 		}
 		while (!matched.empty())
 		{
-//			printf("%i    \r", matched.size());
+//			printf("%zi    \r", matched.size());
 			via = matched.back();
 			matched.pop_back();
-			for (i = poly_start; i < diff_end; i++)
+			for (j = poly_start; j < diff_end; j++)
 			{
-				sub = nodes[i];
+				if (i == j)
+					continue;
+				sub = nodes[j];
 				if (sub->collide(via))
 				{
 					if (sub->id == pwr)
 					{
-						fprintf(stderr, "Error - via %i (%s) shorts PWR to GND!\n", i, via->poly.toString().c_str());
+						fprintf(stderr, "Error - via %zi (%s) shorts PWR to GND!\n", i, via->poly.toString().c_str());
 						return 2;
 					}
 					sub->id = gnd;
@@ -129,11 +136,14 @@ int main (int argc, char **argv)
 		unmatched.clear();
 	}
 
-	printf("Parsing metal nodes %i thru %i - %i vias remaining\n", metal_start, metal_end - 1, vias.size());
+	printf("Parsing metal nodes %zi thru %zi - %zi vias remaining\n", metal_start, metal_end - 1, vias.size());
 	for (i = metal_start; i < metal_end; i++)
 	{
-//		printf("%i        \r", i);
+//		printf("%zi        \r", i);
 		cur = nodes[i];
+		// skip powered/grounded metal nodes, since we already handled them above
+		if ((cur->id == pwr) || (cur->id == gnd))
+			continue;
 		if (!cur->id)
 			cur->id = nextNode++;
 		for (j = 0; j < vias.size(); j++)
@@ -145,7 +155,7 @@ int main (int argc, char **argv)
 		}
 		while (!matched.empty())
 		{
-//			printf("%i.%i\r", i, matched.size());
+//			printf("%zi.%zi\r", i, matched.size());
 			via = matched.back();
 			matched.pop_back();
 			for (j = poly_start; j < diff_end; j++)
@@ -160,9 +170,9 @@ int main (int argc, char **argv)
 						// merge the two nodes together, assuming the lower ID number of the two
 						int oldid = max(cur->id, sub->id);
 						int newid = min(cur->id, sub->id);
-						if ((oldid == 2) && (newid == 1))
+						if ((oldid == gnd) && (newid == pwr))
 						{
-							fprintf(stderr, "Error - via %i (%s) shorts PWR to GND!\n", i, via->poly.toString().c_str());
+							fprintf(stderr, "Error - via %zi (%s) shorts PWR to GND!\n", i, via->poly.toString().c_str());
 							return 2;
 						}
 						for (k = 0; k < nodes.size(); k++)
@@ -180,7 +190,7 @@ int main (int argc, char **argv)
 
 	if (!vias.empty())
 	{
-		printf("%i vias were not matched!\n", vias.size());
+		printf("%zi vias were not matched!\n", vias.size());
 		while (!vias.empty())
 		{
 			via = vias.back();
@@ -190,12 +200,12 @@ int main (int argc, char **argv)
 		}
 	}
 
-	readnodes<node>("buried_contacts.dat", vias, LAYER_SPECIAL);
+	readnodes<node>("buried.dat", vias, LAYER_SPECIAL);
 
-	printf("Parsing polysilicon nodes %i thru %i - %i buried contacts remaining\n", poly_start, poly_end - 1, vias.size());
+	printf("Parsing polysilicon nodes %zi thru %zi - %zi buried contacts remaining\n", poly_start, poly_end - 1, vias.size());
 	for (i = poly_start; i < poly_end; i++)
 	{
-//		printf("%i        \r", i);
+//		printf("%zi        \r", i);
 		cur = nodes[i];
 		if (!cur->id)
 			cur->id = nextNode++;
@@ -207,7 +217,7 @@ int main (int argc, char **argv)
 		}
 		while (!matched.empty())
 		{
-//			printf("%i.%i\r", i, matched.size());
+//			printf("%zi.%zi\r", i, matched.size());
 			via = matched.back();
 			matched.pop_back();
 			for (j = diff_start; j < diff_end; j++)
@@ -222,9 +232,9 @@ int main (int argc, char **argv)
 						// merge the two nodes together, assuming the lower ID number of the two
 						int oldid = max(cur->id, sub->id);
 						int newid = min(cur->id, sub->id);
-						if ((oldid == 2) && (newid == 1))
+						if ((oldid == gnd) && (newid == pwr))
 						{
-							fprintf(stderr, "Error - buried contact %i (%s) shorts PWR to GND!\n", i, via->poly.toString().c_str());
+							fprintf(stderr, "Error - buried contact %zi (%s) shorts PWR to GND!\n", i, via->poly.toString().c_str());
 							return 2;
 						}
 						for (k = 0; k < nodes.size(); k++)
@@ -240,13 +250,13 @@ int main (int argc, char **argv)
 		unmatched.clear();
 		// Not strictly correct, but it handles the input protection diodes
 		if (cur->id == gnd)
-		// alt usage: polysilicon hardwired to PWR doesn't show up highlighted in ChipSim
-		// if (cur->id == pwr)
 			cur->layer = LAYER_PROTECT;
+		// alt usage: polysilicon hardwired to PWR doesn't show up highlighted in ChipSim,
+		// so this can be used to make it highlighted
 	}
 	if (!vias.empty())
 	{
-		printf("%i buried contacts were not matched!\n", vias.size());
+		printf("%zi buried contacts were not matched!\n", vias.size());
 		while (!vias.empty())
 		{
 			via = vias.back();
@@ -256,7 +266,7 @@ int main (int argc, char **argv)
 		}
 	}
 
-	printf("Parsing diffusion nodes %i thru %i\n", diff_start, diff_end - 1);
+	printf("Parsing diffusion nodes %zi thru %zi\n", diff_start, diff_end - 1);
 	for (i = diff_start; i < diff_end; i++)
 	{
 		cur = nodes[i];
@@ -270,7 +280,7 @@ int main (int argc, char **argv)
 
 	// TODO - add an option to go through all of the nodes and make the ID numbers consecutive
 
-	readnodes<transistor>("transistors.dat", transistors, LAYER_SPECIAL);
+	readnodes<transistor>("trans.dat", transistors, LAYER_SPECIAL);
 	transistor *cur_t;
 	nextNode = FIRST_TRANS_ID;
 
@@ -282,10 +292,10 @@ int main (int argc, char **argv)
 	node *t3 = new node;
 	node *t4 = new node;
 
-	printf("Parsing %i transistors\n", transistors.size());
+	printf("Parsing %zi transistors\n", transistors.size());
 	for (i = 0; i < transistors.size(); i++)
 	{
-//		printf("%i     \r", i);
+//		printf("%zi     \r", i);
 		cur_t = transistors[i];
 		cur_t->id = nextNode++;
 		cur_t->area = cur_t->poly.area();
@@ -344,7 +354,7 @@ int main (int argc, char **argv)
 			// assign dummy values
 			cur_t->c1 = gnd;
 			cur_t->c2 = gnd;
-			fprintf(stderr, "Transistor %i had wrong number of terminals (%i)\n", cur_t->id, diffs.size());
+			fprintf(stderr, "Transistor %i had wrong number of terminals (%zi)\n", cur_t->id, diffs.size());
 			continue;
 		}
 
@@ -469,11 +479,12 @@ int main (int argc, char **argv)
 #ifndef	OUTPUT_PARTIAL_JS
 	fprintf(out, "var segdefs = [\n");
 #endif
-	// skip the main PWR and GND nodes, since those are huge and we don't really need them
-	for (i = 2; i < nodes.size(); i++)
+	for (i = 0; i < nodes.size(); i++)
 	{
 		cur = nodes[i];
-		fprintf(out, "[%i,'%c',%i,%s],\n", cur->id, cur->pullup, cur->layer, cur->poly.toString().c_str());
+		// skip powered/grounded metal nodes
+		if (!((cur->layer == LAYER_METAL) && ((cur->id == pwr) || (cur->id == gnd))))
+			fprintf(out, "[%i,'%c',%i,%s],\n", cur->id, cur->pullup, cur->layer, cur->poly.toString().c_str());
 		delete cur;
 	}
 #ifndef	OUTPUT_PARTIAL_JS
