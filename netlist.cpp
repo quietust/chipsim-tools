@@ -29,10 +29,10 @@ int main (int argc, char **argv)
 	int metal_start, metal_end;
 	int poly_start, poly_end;
 	int diff_start, diff_end;
-	readnodes<node>("metal_vcc.dat", nodes, LAYER_METAL);
+	readnodes<node>("metal_pwr.dat", nodes, LAYER_METAL);
 	if (nodes.size() != 1)
 	{
-		fprintf(stderr, "Error: metal_vcc.dat contains more than one node!\n");
+		fprintf(stderr, "Error: metal_pwr.dat contains more than one node!\n");
 		return 1;
 	}
 	readnodes<node>("metal_gnd.dat", nodes, LAYER_METAL);
@@ -41,7 +41,7 @@ int main (int argc, char **argv)
 		fprintf(stderr, "Error: metal_gnd.dat contains more than one node!\n");
 		return 1;
 	}
-	// metal_start begins after VCC/GND, since those are handled separately
+	// metal_start begins after PWR/GND, since those are handled separately
 	metal_start = nodes.size();
 	readnodes<node>("metal.dat", nodes, LAYER_METAL);
 	metal_end = poly_start = nodes.size();
@@ -51,7 +51,7 @@ int main (int argc, char **argv)
 	diff_end = nodes.size();
 
 	int nextNode = FIRST_SEG_ID;
-	int vcc = nextNode++;
+	int pwr = nextNode++;
 	int gnd = nextNode++;
 
 	vector<node *> vias, matched, unmatched;
@@ -60,12 +60,12 @@ int main (int argc, char **argv)
 
 	readnodes<node>("vias.dat", vias, LAYER_SPECIAL);
 
-	// VCC and GND are the two biggest nodes, accounting for most of the vias
+	// PWR and GND are the two biggest nodes, accounting for most of the vias
 	// so report progress on them before proceeding to the rest of the chip
-	printf("Parsing VCC node - %i vias remaining\n", vias.size());
+	printf("Parsing PWR node - %i vias remaining\n", vias.size());
 	{
 		cur = nodes[0];
-		cur->id = vcc;
+		cur->id = pwr;
 		for (i = 0; i < vias.size(); i++)
 		{
 			via = vias[i];
@@ -83,7 +83,7 @@ int main (int argc, char **argv)
 				sub = nodes[i];
 				if (sub->collide(via))
 				{
-					sub->id = vcc;
+					sub->id = pwr;
 					break;
 				}
 			}
@@ -114,9 +114,9 @@ int main (int argc, char **argv)
 				sub = nodes[i];
 				if (sub->collide(via))
 				{
-					if (sub->id == vcc)
+					if (sub->id == pwr)
 					{
-						fprintf(stderr, "Error - via %i (%s) shorts VCC to GND!\n", i, via->poly.toString().c_str());
+						fprintf(stderr, "Error - via %i (%s) shorts PWR to GND!\n", i, via->poly.toString().c_str());
 						return 2;
 					}
 					sub->id = gnd;
@@ -162,7 +162,7 @@ int main (int argc, char **argv)
 						int newid = min(cur->id, sub->id);
 						if ((oldid == 2) && (newid == 1))
 						{
-							fprintf(stderr, "Error - via %i (%s) shorts VCC to GND!\n", i, via->poly.toString().c_str());
+							fprintf(stderr, "Error - via %i (%s) shorts PWR to GND!\n", i, via->poly.toString().c_str());
 							return 2;
 						}
 						for (k = 0; k < nodes.size(); k++)
@@ -224,7 +224,7 @@ int main (int argc, char **argv)
 						int newid = min(cur->id, sub->id);
 						if ((oldid == 2) && (newid == 1))
 						{
-							fprintf(stderr, "Error - buried contact %i (%s) shorts VCC to GND!\n", i, via->poly.toString().c_str());
+							fprintf(stderr, "Error - buried contact %i (%s) shorts PWR to GND!\n", i, via->poly.toString().c_str());
 							return 2;
 						}
 						for (k = 0; k < nodes.size(); k++)
@@ -240,8 +240,8 @@ int main (int argc, char **argv)
 		unmatched.clear();
 		// Not strictly correct, but it handles the input protection diodes
 		if (cur->id == gnd)
-		// alt usage: polysilicon hardwired to VCC doesn't show up highlighted in ChipSim
-		// if (cur->id == vcc)
+		// alt usage: polysilicon hardwired to PWR doesn't show up highlighted in ChipSim
+		// if (cur->id == pwr)
 			cur->layer = LAYER_PROTECT;
 	}
 	if (!vias.empty())
@@ -262,8 +262,8 @@ int main (int argc, char **argv)
 		cur = nodes[i];
 		if (!cur->id)
 			cur->id = nextNode++;
-		if (cur->id == vcc)
-			cur->layer = LAYER_DIFF_VCC;
+		if (cur->id == pwr)
+			cur->layer = LAYER_DIFF_PWR;
 		if (cur->id == gnd)
 			cur->layer = LAYER_DIFF_GND;
 	}
@@ -349,10 +349,10 @@ int main (int argc, char **argv)
 		}
 
 		// if any of the following are true, swap the terminals around
-		// 1. 1st terminal is connected to VCC
+		// 1. 1st terminal is connected to PWR
 		// 2. 1st terminal is connected to GND
 		// 3. 2nd terminal is connected to gate (generally gets caught by case #1)
-		if ((cur_t->c1 == vcc) || (cur_t->c1 == gnd) || (cur_t->c2 == cur_t->gate))
+		if ((cur_t->c1 == pwr) || (cur_t->c1 == gnd) || (cur_t->c2 == cur_t->gate))
 		{
 			j = cur_t->c2;
 			cur_t->c2 = cur_t->c1;
@@ -399,15 +399,15 @@ int main (int argc, char **argv)
 		if (segs0)
 			cur_t->length /= segs0;
 		else	fprintf(stderr, "Transistor %i has zero length?\n", cur_t->id);
-		if (cur_t->c1 == vcc && cur_t->c2 == gnd)
-			fprintf(stderr, "Transistor %i (%s) connects VCC to GND!\n", cur_t->id, cur_t->poly.toString().c_str());
+		if (cur_t->c1 == pwr && cur_t->c2 == gnd)
+			fprintf(stderr, "Transistor %i (%s) connects PWR to GND!\n", cur_t->id, cur_t->poly.toString().c_str());
 
-		// if the gate is connected to one terminal and the other terminal is VCC/GND, assign pullup state to the other side
+		// if the gate is connected to one terminal and the other terminal is PWR/GND, assign pullup state to the other side
 		if (cur_t->c1 == cur_t->gate)
 		{
-			// gate == c1, c2 == VCC -> it's a pull-up resistor
+			// gate == c1, c2 == PWR -> it's a pull-up resistor
 			// but don't do this if the other side is GND!
-			if ((cur_t->c2 == vcc) && (cur_t->c1 != gnd))
+			if ((cur_t->c2 == pwr) && (cur_t->c1 != gnd))
 			{
 				// assign pull-up state
 				for (j = metal_start; j < diff_end; j++)
@@ -469,7 +469,7 @@ int main (int argc, char **argv)
 #ifndef	OUTPUT_PARTIAL_JS
 	fprintf(out, "var segdefs = [\n");
 #endif
-	// skip the main VCC and GND nodes, since those are huge and we don't really need them
+	// skip the main PWR and GND nodes, since those are huge and we don't really need them
 	for (i = 2; i < nodes.size(); i++)
 	{
 		cur = nodes[i];

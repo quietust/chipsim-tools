@@ -72,7 +72,7 @@ function convert_svg ($in, $out)
 }
 
 $layers = array(
-	'metal_vcc',
+	'metal_pwr',
 	'metal_gnd',
 	'metal',
 	'vias',

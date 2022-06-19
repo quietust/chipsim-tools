@@ -19,10 +19,10 @@ int main (int argc, char **argv)
 	int diff_start, diff_end;
 
 	metal_start = nodes.size();
-	readnodes<node>("metal_vcc.dat", nodes, LAYER_METAL);
+	readnodes<node>("metal_pwr.dat", nodes, LAYER_METAL);
 	if (nodes.size() != 1)
 	{
-		fprintf(stderr, "Error: metal_vcc.dat contains more than one node (found %i)!\n", nodes.size());
+		fprintf(stderr, "Error: metal_pwr.dat contains more than one node (found %i)!\n", nodes.size());
 		return 1;
 	}
 	readnodes<node>("metal_gnd.dat", nodes, LAYER_METAL);

@@ -200,7 +200,7 @@ public:
 		if (isInside(o0))
 			out = o2;
 		else	out = o1;
-		return sqrt((v2.y - v1.y) * (v2.y - v1.y) + (v2.x - v1.x) * (v2.x - v1.x));
+		return sqrt((long double)((v2.y - v1.y) * (v2.y - v1.y) + (v2.x - v1.x) * (v2.x - v1.x)));
 	}
 
 	// Calculate the area of the polygon
@@ -239,7 +239,7 @@ public:
 #define LAYER_DIFF      1
 #define LAYER_PROTECT   2
 #define LAYER_DIFF_GND  3
-#define LAYER_DIFF_VCC  4
+#define LAYER_DIFF_PWR  4
 #define LAYER_POLY      5
 #define LAYER_SPECIAL   6
 
