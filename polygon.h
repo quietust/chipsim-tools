@@ -25,6 +25,8 @@
 typedef __int64 int64_t;
 #else
 #include <inttypes.h>
+#include <climits>
+#include <math.h>
 #endif
 
 struct rect
