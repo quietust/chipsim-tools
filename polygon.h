@@ -163,7 +163,7 @@ public:
 	// Find a vertex on the segment's perpendicular bisector
 	// Vertex is always "d" pixels from the outside edge of the polygon
 	// Also return the length of the segment, just because it's useful
-	int midpoint (int idx, vertex &out, int d = 3) const
+	int midpoint (int idx, vertex &out, int d = 2) const
 	{
 		const vertex &v1 = vertices[idx];
 		const vertex &v2 = vertices[idx + 1];
@@ -248,14 +248,14 @@ public:
 struct node
 {
 	int id;
-	char pullup;
+	char pull;
 	int layer;
 	polygon poly;
 	rect bbox;
 	node ()
 	{
 		id = 0;
-		pullup = '-';
+		pull = '-';
 		layer = -1;
 	}
 	bool collide (node *other)
@@ -279,6 +279,7 @@ struct transistor : public node
 	int segments;
 	int area;
 	bool depl;
+	bool ptype;
 	transistor ()
 	{
 		gate = c1 = c2 = 0;
@@ -286,7 +287,7 @@ struct transistor : public node
 		length = 0;
 		segments = 0;
 		area = 0;
-		depl = false;
+		depl = ptype = false;
 	}
 };
 
@@ -298,20 +299,22 @@ bool readnodes (const char *filename, std::vector<T *> &nodes, int layer, int fo
 	FILE *in = fopen(filename, "rt");
 	if (!in)
 	{
-		fprintf(stderr, "Failed to open file!\n");
+		fprintf(stderr, "Failed to open file '%s'!\n", filename);
 		return false;
 	}
 	int x, y;
 	int r;
+	int line = 0;
 	T *n = new T;
 	while (1)
 	{
+		line++;
 		r = fscanf(in, "%d,%d", &x, &y);
 		if (feof(in))
 			break;
 		if (r != 2)
 		{
-			fprintf(stderr, "Error reading file!\n");
+			fprintf(stderr, "Error reading from file '%s' at line %i!\n", filename, line);
 			delete n;
 			return false;
 		}
