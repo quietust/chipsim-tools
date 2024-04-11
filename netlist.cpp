@@ -166,6 +166,14 @@ int main (int argc, char **argv)
 			cur->layer = LAYER_DIFF_GND;
 	}
 
+	// Move all permanently powered/grounded poly nodes into the Protect layer
+	for (size_t i = poly_start; i < poly_end; i++)
+	{
+		cur = nodes[i];
+		if ((cur->id == pwr) || (cur->id == gnd))
+			cur->layer = LAYER_PROTECT;
+	}
+
 	// TODO - add an option to go through all of the nodes and make the ID numbers consecutive
 
 	size_t trans_p_start;
@@ -178,7 +186,9 @@ int main (int argc, char **argv)
 	nextNode = FIRST_TRANS_ID;
 
 	vector<node *> diffs;
+#ifdef NMOS
 	int pullups = 0;
+#endif
 
 	node *t1 = new node;
 	node *t2 = new node;
@@ -199,12 +209,9 @@ int main (int argc, char **argv)
 			if (sub->collide(cur_t))
 			{
 				cur_t->gate = sub->id;
-				// Permanently disabled transistors (grounded N or powered P) put their Poly in the Protection layer
+				// Permanently disabled transistors (grounded N or powered P) get discarded at the end
 				if (cur_t->gate == (cur_t->ptype ? pwr : gnd))
-				{
-					sub->layer = LAYER_PROTECT;
 					nextNode--;
-				}
 				break;
 			}
 		}
@@ -250,9 +257,9 @@ int main (int argc, char **argv)
 
 		if (err || (cur_t->c1 == -1) || (cur_t->c2 == -1))
 		{
+			fprintf(stderr, "Transistor %i (%s) had wrong number of terminals (%zi:%i,%i)\n", cur_t->id, cur_t->poly.toString().c_str(), diffs.size(), cur_t->c1, cur_t->c2);
 			// assign dummy values
 			cur_t->c1 = cur_t->c2 = cur_t->ptype ? pwr : gnd;
-			fprintf(stderr, "Transistor %i had wrong number of terminals (%zi)\n", cur_t->id, diffs.size());
 			continue;
 		}
 
@@ -292,7 +299,7 @@ int main (int argc, char **argv)
 					cur_t->width2 += len;
 					segs2++;
 				}
-				else	fprintf(stderr, "Transistor %i diffusion node %i doesn't belong to either side (%i/%i)?\n", cur_t->id, diffs[k]->id, cur_t->c1, cur_t->c2);
+				else	fprintf(stderr, "Transistor %i (%s) diffusion node %i doesn't belong to either side (%i/%i)?\n", cur_t->id, cur_t->poly.toString().c_str(), diffs[k]->id, cur_t->c1, cur_t->c2);
 				found = true;
 				break;
 			}
@@ -306,12 +313,12 @@ int main (int argc, char **argv)
 			cur_t->segments = segs1;
 		else
 		{
-			fprintf(stderr, "Transistor %i had inconsistent number of segments on each side (%i/%i)!\n", cur_t->id, segs1, segs2);
+			fprintf(stderr, "Transistor %i (%s) had inconsistent number of segments on each side (%i/%i)!\n", cur_t->id, cur_t->poly.toString().c_str(), segs1, segs2);
 			cur_t->segments = std::max(segs1, segs2);
 		}
 		if (segs0)
 			cur_t->length /= segs0;
-		else	fprintf(stderr, "Transistor %i has zero length?\n", cur_t->id);
+		else	fprintf(stderr, "Transistor %i (%s) has zero length?\n", cur_t->id, cur_t->poly.toString().c_str());
 		if (cur_t->c1 == pwr && cur_t->c2 == gnd)
 			fprintf(stderr, "Transistor %i (%s) connects PWR to GND!\n", cur_t->id, cur_t->poly.toString().c_str());
 #ifdef NMOS
@@ -337,8 +344,10 @@ int main (int argc, char **argv)
 #endif
 	}
 	diffs.clear();
+#ifdef NMOS
 	if (pullups > 0)
 		printf("Deleted %i pullups\n", pullups);
+#endif
 
 	delete t1;
 	delete t2;

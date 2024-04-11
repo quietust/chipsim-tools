@@ -1,3 +1,5 @@
 check
 netlist
+netlist_nmos
+netlist_cmos
 pngtrace
