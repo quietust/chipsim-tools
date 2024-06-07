@@ -6,6 +6,7 @@
  */
 
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <setjmp.h>
 #include <png.h>
@@ -331,6 +332,24 @@ struct img_data
 			}
 		}
 	}
+
+	void doHollow()
+	{
+		for (int px = 0; px < pw; px++)
+			for (int py = 0; py < ph; py++)
+				set(px, py, ~get(px, py));
+		floodErase(0, 0);
+		for (int py = 0; py < ph; py++)
+		{
+			for (int px = 0; px < pw; px++)
+			{
+				if (!get(px, py))
+					continue;
+				printf("Hole found at %i,%i\n", px, py);
+				floodErase(px, py);
+			}
+		}
+	}
 } pixels;
 
 unsigned int component(png_const_bytep row, png_uint_32 x, unsigned int c, unsigned int bit_depth, unsigned int channels)
@@ -410,6 +429,7 @@ int main(int argc, const char **argv)
 	if (argc < 2)
 	{
 		fprintf(stderr, "Usage: pngtrace <input.png> [output.txt]\n");
+		fprintf(stderr, "Specify a filename of '--hollow' to scan for hollow nodes.\n");
 		return 1;
 	}
 
@@ -490,10 +510,15 @@ done:
 	if (result > 0)
 		return result;
 
-	printf("Extracting polygons...\n");
-
 	if (argc > 2)
 	{
+		if (!strcmp(argv[2], "--hollow"))
+		{
+			printf("Scanning for hollow nodes...\n");
+			pixels.doHollow();
+			printf("Done!\n");
+			return 0;
+		}
 		out = fopen(argv[2], "wt");
 		if (!out)
 		{
@@ -501,6 +526,8 @@ done:
 			return 1;
 		}
 	}
+
+	printf("Extracting polygons...\n");
 
 	load_rules();
 	pixels.doTrace(out);

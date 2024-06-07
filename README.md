@@ -11,13 +11,14 @@ ON, use the number pad to tell it which direction to go, or press 'q' to exit
 and save the list of learned rules (or 'x' to abort without saving). The next
 time you run it, the previously stored rules will be automatically imported.
 
-Currently does NOT recognize hollow nodes - if you have any, the vertex list
-generated may not make sense and the remaining tools below may throw errors.
+Currently does NOT recognize hollow nodes during tracing - run with the
+"--hollow" option beforehand to ensure that there are no holes.
 
 check
 -----
-Checks polygon data for consistency - makes sure that each via and buried
-contact connects exactly two nodes together and that no segments are hollow.
+Checks polygon data for consistency, making sure that each via and buried
+contact connects exactly two nodes together and that no two nodes in the same
+layer collide with one another.
 
 netlist
 -------
