@@ -9,13 +9,17 @@
 #include "polygon.h"
 
 // Uncomment this to enable detection and removal of depletion pullups
-//#define NMOS
+#define NMOS
 
 #include <vector>
+#include <map>
 using std::vector;
 
 // don't output first/last lines of segdefs.js/transdefs.js
 //#define OUTPUT_PARTIAL_JS
+
+// Uncomment to include transistors as a visible segdefs layer
+//#define SEGDEFS_INCLUDE_TRANS
 
 #ifndef FIRST_SEG_ID
 #define	FIRST_SEG_ID	1
@@ -24,7 +28,7 @@ using std::vector;
 #define	FIRST_TRANS_ID	1
 #endif
 
-bool find_hits (vector<node *> &nodes, vector<node *> &vias, int &nextNode, int pwr, int gnd, size_t outer_start, size_t outer_end, size_t inner_start, size_t inner_end)
+bool find_hits (vector<node *> &nodes, vector<node *> &vias, int &nextNode, int pwr, int gnd, size_t outer_start, size_t outer_end, size_t inner_start, size_t inner_end, bool reversible = false)
 {
 	vector<node *> matched, unmatched;
 	node *via, *cur, *sub;
@@ -37,7 +41,7 @@ bool find_hits (vector<node *> &nodes, vector<node *> &vias, int &nextNode, int 
 		for (size_t j = 0; j < vias.size(); j++)
 		{
 			via = vias[j];
-			if (cur->collide(via))
+			if (cur->collide(via) || (reversible && via->collide(cur)))
 				matched.push_back(via);
 			else	unmatched.push_back(via);
 		}
@@ -48,7 +52,7 @@ bool find_hits (vector<node *> &nodes, vector<node *> &vias, int &nextNode, int 
 			for (size_t j = inner_start; j < inner_end; j++)
 			{
 				sub = nodes[j];
-				if (!sub->collide(via))
+				if (!sub->collide(via) && !(reversible && via->collide(sub)))
 					continue;
 				if (sub->id == 0)
 					sub->id = cur->id;
@@ -151,7 +155,7 @@ int main (int argc, char **argv)
 	readnodes<node>("buried.dat", vias, LAYER_SPECIAL);
 
 	printf("Parsing polysilicon nodes %zi thru %zi with %zi buried contacts\n", poly_start, poly_end - 1, vias.size());
-	if (!find_hits(nodes, vias, nextNode, pwr, gnd, poly_start, poly_end, diff_start, diff_end))
+	if (!find_hits(nodes, vias, nextNode, pwr, gnd, poly_start, poly_end, diff_start, diff_end, true))
 		return 2;
 
 	printf("Parsing diffusion nodes %zi thru %zi\n", diff_start, diff_end - 1);
@@ -190,6 +194,7 @@ int main (int argc, char **argv)
 	int pullups = 0;
 #endif
 
+	// Temporary nodes for transistor collision checks
 	node *t1 = new node;
 	node *t2 = new node;
 	node *t3 = new node;
@@ -200,7 +205,6 @@ int main (int argc, char **argv)
 	{
 		cur_t = transistors[i];
 		cur_t->id = nextNode++;
-		cur_t->area = cur_t->poly.area();
 		cur_t->ptype = (i >= trans_p_start);
 
 		for (size_t j = poly_start; j < poly_end; j++)
@@ -214,6 +218,11 @@ int main (int argc, char **argv)
 					nextNode--;
 				break;
 			}
+		}
+		if (!cur_t->gate)
+		{
+			fprintf(stderr, "Transistor %i (%s) has no gate?\n", cur_t->id, cur_t->poly.toString().c_str());
+			continue;
 		}
 		t1->poly = polygon(cur_t->poly);
 		t2->poly = polygon(cur_t->poly);
@@ -259,7 +268,10 @@ int main (int argc, char **argv)
 		{
 			fprintf(stderr, "Transistor %i (%s) had wrong number of terminals (%zi:%i,%i)\n", cur_t->id, cur_t->poly.toString().c_str(), diffs.size(), cur_t->c1, cur_t->c2);
 			// assign dummy values
-			cur_t->c1 = cur_t->c2 = cur_t->ptype ? pwr : gnd;
+			if (cur_t->c1 == -1)
+				cur_t->c1 = cur_t->ptype ? pwr : gnd;
+			if (cur_t->c2 == -1)
+				cur_t->c2 = cur_t->ptype ? pwr : gnd;
 			continue;
 		}
 
@@ -322,7 +334,7 @@ int main (int argc, char **argv)
 		if (cur_t->c1 == pwr && cur_t->c2 == gnd)
 			fprintf(stderr, "Transistor %i (%s) connects PWR to GND!\n", cur_t->id, cur_t->poly.toString().c_str());
 #ifdef NMOS
-		// if the gate is connected to one terminal and the other terminal is PWR/GND, assign pullup state to the other side
+		// if the gate is connected to one terminal and the other terminal is PWR, assign pullup state to the other side
 		if (cur_t->c1 == cur_t->gate)
 		{
 			// gate == c1, c2 == PWR -> it's a pull-up resistor
@@ -354,6 +366,41 @@ int main (int argc, char **argv)
 	delete t3;
 	delete t4;
 
+	printf("Scanning for inputs and outputs...\n");
+
+	// Simple logic: just check for nodes which are Flo
+	const uint8_t NODEFLAG_IN  = 0x01; // Node drives a transistor
+	const uint8_t NODEFLAG_OUT = 0x02; // Node is driven by a transistor
+	const uint8_t NODEFLAG_CHK = 0x04;
+
+	std::map<int32_t,uint8_t> nodeflags;
+	// Initialize flags for all known nodes
+	for (size_t i = 0; i < nodes.size(); i++)
+		nodeflags[nodes[i]->id] = 0;
+	// Go through all transistors and clear the input/output flags on the corresponding nodes
+	for (size_t i = 0; i < transistors.size(); i++)
+	{
+		cur_t = transistors[i];
+		nodeflags[cur_t->c1] |= NODEFLAG_OUT;
+		nodeflags[cur_t->c2] |= NODEFLAG_OUT;
+		nodeflags[cur_t->gate] |= NODEFLAG_IN;
+	}
+	for (size_t i = 0; i < nodes.size(); i++)
+	{
+		uint8_t &flags = nodeflags[nodes[i]->id];
+		// multiple nodes have the same ID, so only check each one once
+		if (flags & NODEFLAG_CHK)
+			continue;
+		// If nothing drives this node, it's an input (or it's floating due to lack of connections)
+		if (!(flags & NODEFLAG_OUT))
+			printf("Input (or floating): %i\n", nodes[i]->id);
+		// If this node drives nothing, it's an output (or possibly just an interior node that goes nowhere)
+		// Skip these for now, since proper detection is poor (to do it properly, we would need to chase through all other transistors)
+//		if (!(flags & NODEFLAG_IN))
+//			printf("Output (or interior): %i\n", nodes[i]->id);
+		flags |= NODEFLAG_CHK;
+	}
+
 	FILE *out;
 
 	printf("Writing transdefs.js\n");
@@ -363,7 +410,7 @@ int main (int argc, char **argv)
 		fprintf(stderr, "Unable to create transdefs.js!\n");
 		return 1;
 	}
-#ifndef	OUTPUT_PARTIAL_JS
+#ifndef OUTPUT_PARTIAL_JS
 	fprintf(out, "var transdefs = [\n");
 #endif
 	for (size_t i = 0; i < transistors.size(); i++)
@@ -373,6 +420,7 @@ int main (int argc, char **argv)
 		if (cur_t->gate == (cur_t->ptype ? pwr : gnd))
 		{
 			delete cur_t;
+			transistors[i] = NULL;
 			continue;
 		}
 #ifdef NMOS
@@ -380,17 +428,22 @@ int main (int argc, char **argv)
 		if (cur_t->depl)
 		{
 			delete cur_t;
+			transistors[i] = NULL;
 			continue;
 		}
 #endif
-		fprintf(out, "['t%i',%i,%i,%i,[%i,%i,%i,%i],[%i,%i,%i,%i,%i],%s],\n", cur_t->id, cur_t->gate, cur_t->c1, cur_t->c2, cur_t->bbox.xmin, cur_t->bbox.xmax, cur_t->bbox.ymin, cur_t->bbox.ymax, cur_t->width1, cur_t->width2, cur_t->length, cur_t->segments, cur_t->area, cur_t->ptype ? "true" : "false");
+		fprintf(out, "['t%i',%i,%i,%i,[%s],[%s],%s],\n", cur_t->id, cur_t->gate, cur_t->c1, cur_t->c2, cur_t->bbox.toString().c_str(), cur_t->toString().c_str(), cur_t->ptype ? "true" : "false");
+#ifndef SEGDEFS_INCLUDE_TRANS
 		delete cur_t;
+#endif
 	}
-#ifndef	OUTPUT_PARTIAL_JS
+#ifndef OUTPUT_PARTIAL_JS
 	fprintf(out, "]\n");
 #endif
 	fclose(out);
+#ifndef SEGDEFS_INCLUDE_TRANS
 	transistors.clear();
+#endif
 
 	printf("Writing segdefs.js\n");
 	out = fopen("segdefs.js", "wt");
@@ -399,7 +452,7 @@ int main (int argc, char **argv)
 		fprintf(stderr, "Unable to create segdefs.js!\n");
 		return 1;
 	}
-#ifndef	OUTPUT_PARTIAL_JS
+#ifndef OUTPUT_PARTIAL_JS
 	fprintf(out, "var segdefs = [\n");
 #endif
 	for (size_t i = 0; i < nodes.size(); i++)
@@ -415,11 +468,29 @@ int main (int argc, char **argv)
 #endif
 		delete cur;
 	}
-#ifndef	OUTPUT_PARTIAL_JS
+	nodes.clear();
+
+#ifdef SEGDEFS_INCLUDE_TRANS
+	for (size_t i = 0; i < transistors.size(); i++)
+	{
+		cur_t = transistors[i];
+		if (cur_t == NULL)
+			continue;
+		// reassign transistor ID to match its Gate
+#ifdef NMOS
+		fprintf(out, "[%i,'%c',%i,%s],\n", cur_t->gate, cur_t->pull, cur_t->layer, cur_t->poly.toString().c_str());
+#else
+		fprintf(out, "[%i,%i,%s],\n", cur_t->gate, cur_t->layer, cur_t->poly.toString().c_str());
+#endif
+		delete cur_t;
+	}
+	transistors.clear();
+#endif
+
+#ifndef OUTPUT_PARTIAL_JS
 	fprintf(out, "]\n");
 #endif
 	fclose(out);
-	nodes.clear();
 
 	printf("All done!\n");
 	return 0;

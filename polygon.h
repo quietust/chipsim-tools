@@ -10,11 +10,17 @@
 
 // Height of the layer images, so we can flip them vertically
 // (it was simpler to hardcode it than to figure it out dynamically)
-// The 2A03 used a height of 6256 and scale 2
+// The 2A03 used a height of 6256 and upscale 2
 // Leave undefined in order to disable vertical flipping entirely
-//#define	CHIP_HEIGHT	10000
-#ifndef SCALE
-#define	SCALE	1
+//#define	CHIP_HEIGHT	5000
+
+// Upscale coordinates during import
+#ifndef UPSCALE
+#define	UPSCALE	1
+#endif
+// Downscale coordinates during export
+#ifndef DOWNSCALE
+#define DOWNSCALE 1
 #endif
 
 #include <vector>
@@ -33,6 +39,18 @@ struct rect
 {
 	int xmin, ymin;
 	int xmax, ymax;
+
+	// Generate a string describing the rect: xmin,xmax,ymin,ymax
+	std::string toString () const
+	{
+		std::string output;
+		char buf[48];
+		sprintf(buf, "%i,%i", xmin / DOWNSCALE, xmax / DOWNSCALE);
+		output += buf;
+		sprintf(buf, ",%i,%i", ymin / DOWNSCALE, ymax / DOWNSCALE);
+		output += buf;
+		return output;
+	}
 };
 
 struct vertex
@@ -224,11 +242,11 @@ public:
 	{
 		std::string output;
 		char buf[48];
-		sprintf(buf, "%i,%i", vertices[0].x, vertices[0].y);
+		sprintf(buf, "%i,%i", vertices[0].x / DOWNSCALE, vertices[0].y / DOWNSCALE);
 		output += buf;
 		for (int i = 1; i < numVertices(); i++)
 		{
-			sprintf(buf, ",%i,%i", vertices[i].x, vertices[i].y);
+			sprintf(buf, ",%i,%i", vertices[i].x / DOWNSCALE, vertices[i].y / DOWNSCALE);
 			output += buf;
 		}
 		return output;
@@ -277,7 +295,6 @@ struct transistor : public node
 	int width2;
 	int length;
 	int segments;
-	int area;
 	bool depl;
 	bool ptype;
 	transistor ()
@@ -286,8 +303,23 @@ struct transistor : public node
 		width1 = width2 = 0;
 		length = 0;
 		segments = 0;
-		area = 0;
 		depl = ptype = false;
+	}
+
+	// Generate a string containing the transistor's geometry description: width1,width2,length,segments,area
+	std::string toString () const
+	{
+		std::string output;
+		char buf[48];
+		sprintf(buf, "%i,%i", width1 / DOWNSCALE, width2 / DOWNSCALE);
+		output += buf;
+		sprintf(buf, ",%i", length / DOWNSCALE);
+		output += buf;
+		sprintf(buf, ",%i", segments);
+		output += buf;
+		sprintf(buf, ",%i", poly.area() / (DOWNSCALE * DOWNSCALE));
+		output += buf;
+		return output;
 	}
 };
 
@@ -334,9 +366,9 @@ bool readnodes (const char *filename, std::vector<T *> &nodes, int layer, int fo
 			// (0,0 is at bottom-left instead of top-left)
 			// we flip the image vertically
 #ifdef	CHIP_HEIGHT
-			n->poly.add(x * SCALE, (CHIP_HEIGHT - y) * SCALE);
+			n->poly.add(x * UPSCALE, (CHIP_HEIGHT - y) * UPSCALE);
 #else
-			n->poly.add(x * SCALE, y * SCALE);
+			n->poly.add(x * UPSCALE, y * UPSCALE);
 #endif
 		}
 	}
