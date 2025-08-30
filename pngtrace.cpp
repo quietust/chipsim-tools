@@ -318,6 +318,7 @@ struct img_data
 
 	void doTrace(FILE *out)
 	{
+		int total = 0;
 		if (!data)
 			return;
 		for (int py = 0; py < ph; py++)
@@ -326,8 +327,10 @@ struct img_data
 			{
 				if (!get(px, py))
 					continue;
+				total++;
 				if (!trace(out, px, py))
 					return;
+				printf("%i...\r", total);
 				floodErase(px, py);
 			}
 		}
@@ -536,6 +539,6 @@ done:
 
 	if (out)
 		fclose(out);
-	printf("Done!\n");
+	printf("\nDone!\n");
 	return 0;
 }
