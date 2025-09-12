@@ -338,10 +338,8 @@ struct img_data
 
 	void doHollow()
 	{
-		for (int px = 0; px < pw; px++)
-			for (int py = 0; py < ph; py++)
-				set(px, py, ~get(px, py));
-		floodErase(0, 0);
+		doInvert();
+		printf("Searching for holes...\n");
 		for (int py = 0; py < ph; py++)
 		{
 			for (int px = 0; px < pw; px++)
@@ -352,6 +350,16 @@ struct img_data
 				floodErase(px, py);
 			}
 		}
+	}
+
+	void doInvert()
+	{
+		printf("Inverting image...\n");
+		for (int px = 0; px < pw; px++)
+			for (int py = 0; py < ph; py++)
+				set(px, py, ~get(px, py));
+		printf("Clearing background...\n");
+		floodErase(0, 0);
 	}
 } pixels;
 
@@ -522,11 +530,19 @@ done:
 			printf("Done!\n");
 			return 0;
 		}
-		out = fopen(argv[2], "wt");
-		if (!out)
+		if (!strcmp(argv[2], "--holes"))
 		{
-			fprintf(stderr, "pngtrace: could not create output file '%s'\n", argv[2]);
-			return 1;
+			printf("Tracing holes...\n");
+			pixels.doInvert();
+		}
+		else
+		{
+			out = fopen(argv[2], "wt");
+			if (!out)
+			{
+				fprintf(stderr, "pngtrace: could not create output file '%s'\n", argv[2]);
+				return 1;
+			}
 		}
 	}
 
