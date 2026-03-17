@@ -136,6 +136,28 @@ int main (int argc, char **argv)
 	readnodes<node>("diff.dat", nodes, LAYER_DIFF);
 	diff_end = nodes.size();
 
+	// Sanity check: make sure we have at least one powered node
+	// and at least one grounded node, otherwise nothing will work
+	size_t num_pwr = 0, num_gnd = 0;
+	for (size_t i = metal2_start; i < diff_end; i++)
+	{
+		cur = nodes[i];
+		if (cur->id == pwr)
+			num_pwr++;
+		if (cur->id == gnd)
+			num_gnd++;
+	}
+	if (num_pwr == 0)
+	{
+		printf("No powered nodes found! Make sure you processed your layer images correctly.\n");
+		return 2;
+	}
+	if (num_gnd == 0)
+	{
+		printf("No grounded nodes found! Make sure you processed your layer images correctly.\n");
+		return 2;
+	}
+
 	// First, use 'vias2' to link 'metal2' to 'metal1'
 	readnodes<node>("vias2.dat", vias, LAYER_SPECIAL);
 	printf("Parsing metal2 nodes %zi thru %zi with %zi vias\n", metal2_start, metal2_end - 1, vias.size());

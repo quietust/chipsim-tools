@@ -596,7 +596,7 @@ int main(int argc, const char **argv)
 				continue;
 			// add it to our color list, and mark it in our canvas
 			colors.insert(c);
-			pixels.set(px, py, c == color);
+			pixels.set(px, py, (color == c) || (color == 0));
 		}
 	}
 	// read and discard PNG footer
