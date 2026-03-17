@@ -2,7 +2,7 @@
  * PNG Layer Image Vectorizer
  * Interactively generates rules and saves them for future runs
  *
- * Copyright 2023 QMT Productions
+ * Copyright 2023-2026 QMT Productions
  */
 
 #include <stdlib.h>
@@ -42,7 +42,6 @@ struct coord
 	int x = -1;
 	int y = -1;
 };
-std::set<int> unrec;
 
 enum DIR { DIR_E, DIR_SE, DIR_S, DIR_SW, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_NONE };
 const char *dirs[9] = {"east", "southeast", "south", "southwest", "west", "northwest", "north", "northeast", "indeterminate"};
@@ -99,18 +98,26 @@ void save_rules()
 #define CHUNK_SIZE 256
 struct img_chunk
 {
-	unsigned char pixels[CHUNK_SIZE][CHUNK_SIZE];
+	unsigned char pixels[CHUNK_SIZE][CHUNK_SIZE / 8];
 	unsigned char get(int dx, int dy)
 	{
 		if (dx < 0 || dx >= CHUNK_SIZE || dy < 0 || dy >= CHUNK_SIZE)
 			return 0;
-		return pixels[dx][dy];
+		return (pixels[dx][dy / 8] >> (dy & 7)) & 1;
 	}
-	void set (int dx, int dy, unsigned char val)
+	void set (int dx, int dy, bool val)
 	{
 		if (dx < 0 || dx >= CHUNK_SIZE || dy < 0 || dy >= CHUNK_SIZE)
 			return;
-		pixels[dx][dy] = val;
+		pixels[dx][dy / 8] &= ~(1 << (dy & 7));
+		if (val)
+			pixels[dx][dy / 8] |= 1 << (dy & 7);
+	}
+	void invert(int dx, int dy)
+	{
+		if (dx < 0 || dx >= CHUNK_SIZE || dy < 0 || dy >= CHUNK_SIZE)
+			return;
+		pixels[dx][dy / 8] ^= 1 << (dy & 7);
 	}
 };
 
@@ -165,17 +172,23 @@ struct img_data
 			}
 		}
 	}
-	void set (int x, int y, unsigned char val)
+	void set (int x, int y, bool val)
 	{
 		if (x < 0 || x >= pw || y < 0 || y >= ph)
 			return;
 		data[x / CHUNK_SIZE][y / CHUNK_SIZE].set(x % CHUNK_SIZE, y % CHUNK_SIZE, val);
 	}
-	unsigned char get (int x, int y)
+	bool get (int x, int y)
 	{
 		if (x < 0 || x >= pw || y < 0 || y >= ph)
 			return 0;
 		return data[x / CHUNK_SIZE][y / CHUNK_SIZE].get(x % CHUNK_SIZE, y % CHUNK_SIZE);
+	}
+	void invert(int x, int y)
+	{
+		if (x < 0 || x >= pw || y < 0 || y >= ph)
+			return;
+		data[x / CHUNK_SIZE][y / CHUNK_SIZE].invert(x % CHUNK_SIZE, y % CHUNK_SIZE);
 	}
 
 	void printmask (int cur_corner, DIR dir)
@@ -381,90 +394,166 @@ struct img_data
 		printf("Inverting image...\n");
 		for (int px = 0; px < pw; px++)
 			for (int py = 0; py < ph; py++)
-				set(px, py, ~get(px, py));
+				invert(px, py);
 		printf("Clearing background...\n");
 		floodErase(0, 0);
 	}
 } pixels;
 
-unsigned int component(png_const_bytep row, png_uint_32 x, unsigned int c, unsigned int bit_depth, unsigned int channels)
+unsigned int get_rgb(int channels, png_const_bytep row, png_uint_32 x)
 {
-	png_uint_32 bit_offset_hi = bit_depth * ((x >> 6) * channels);
-	png_uint_32 bit_offset_lo = bit_depth * ((x & 0x3f) * channels + c);
+	unsigned char alpha = 0xFF;
+	// If we have 4 channels, there's an Alpha channel
+	if (channels == 4)
+		alpha = row[x * channels + 3];
+	// If it's fully transparent, just return black
+	if (alpha == 0)
+		return 0;
 
-	row = (png_const_bytep)(((const png_byte (*)[8])row) + bit_offset_hi);
-	row += bit_offset_lo >> 3;
-	bit_offset_lo &= 0x07;
-
-	switch (bit_depth)
-	{
-	case 1: return (row[0] >> (7-bit_offset_lo)) & 0x01;
-	case 2: return (row[0] >> (6-bit_offset_lo)) & 0x03;
-	case 4: return (row[0] >> (4-bit_offset_lo)) & 0x0f;
-	case 8: return row[0];
-	case 16: return (row[0] << 8) + row[1];
-	default:
-		fprintf(stderr, "pngtrace: invalid bit depth %u\n", bit_depth);
-		exit(1);
-	}
+	// Read colors
+	unsigned int rgb = (row[x * channels + 0] << 16) | (row[x * channels + 1] << 8) | (row[x * channels + 2] << 0);
+	// If it's not fully opaque, add an error marker
+	if (alpha != 0xFF)
+		rgb |= 0xF0000000;
+	return rgb;
 }
 
-unsigned char get_alpha(png_structp png_ptr, png_infop info_ptr, png_const_bytep row, png_uint_32 x)
+// libpng helper functions
+#define LIBPNG_SETJMP(ret) if (setjmp(png_jmpbuf(png_ptr))) return ret;
+
+bool readpng_init (FILE *infile, png_structp &png_ptr, png_infop &info_ptr, png_uint_32 &width, png_uint_32 &height, int &channels, png_bytep &row)
 {
-	unsigned int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+	// Make sure this is actually a PNG file
+	unsigned char header[8];
+	if (fread(header, 1, 8, infile) != 8)
+		return false;
+	if (!png_check_sig(header, 8))
+		return false;
 
-	switch (png_get_color_type(png_ptr, info_ptr))
+	// Create PNG reader
+	png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+	if (!png_ptr)
+		return false;
+
+	// Create PNG info
+	info_ptr = png_create_info_struct(png_ptr);
+	if (!info_ptr)
+		return false;
+
+	// Setup error handler, in case anything below fails
+	LIBPNG_SETJMP(false)
+
+	// Open the file
+	png_init_io(png_ptr, infile);
+	// Skip the header, since we already read that above
+	png_set_sig_bytes(png_ptr, 8);
+	// Read file info
+	png_read_info(png_ptr, info_ptr);
+
+	// Read the image data header to get general characteristics
+	int bit_depth, color_type, interlace;
+	png_uint_32 ihdr = png_get_IHDR(png_ptr, info_ptr, &width, &height, &bit_depth, &color_type, &interlace, NULL, NULL);
+	if (!ihdr)
 	{
-	case PNG_COLOR_TYPE_GRAY:
-		return 255;
-
-	case PNG_COLOR_TYPE_PALETTE:
+		fprintf(stderr, "pngtrace: failed to read image header\n");
+		return false;
+	}
+	// Don't mess with interlaced images, not worth the trouble
+	if (interlace != PNG_INTERLACE_NONE)
 	{
-		int index = component(row, x, 0, bit_depth, 1);
-		png_colorp palette = NULL;
-		int num_palette = 0;
-		png_bytep trans_alpha = NULL;
-		int num_trans = 0;
-
-		if (!((png_get_PLTE(png_ptr, info_ptr, &palette, &num_palette) & PNG_INFO_PLTE) && num_palette > 0 && palette != NULL))
-			png_error(png_ptr, "pngtrace: invalid index");
-
-		if ((png_get_tRNS(png_ptr, info_ptr, &trans_alpha, &num_trans, NULL) & PNG_INFO_tRNS) && num_trans > 0 && trans_alpha != NULL)
-			return index < num_trans ? trans_alpha[index] : 255;
-		else	return 255;
+		fprintf(stderr, "pngtrace: interlaced images are not supported\n");
+		return false;
 	}
 
-	case PNG_COLOR_TYPE_RGB:
-		return 255;
+	// Request some transformations to make things easier for us
+	// Expand paletted images to RGB
+	if (color_type == PNG_COLOR_TYPE_PALETTE)
+		png_set_palette_to_rgb(png_ptr);
+	// Expand grayscale to 8-bit
+	if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)
+		png_set_expand_gray_1_2_4_to_8(png_ptr);
+	// Convert palette transparency to alpha channel
+	if (png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS))
+		png_set_tRNS_to_alpha(png_ptr);
+	// Promote grayscale to RGB
+	if (color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+		png_set_gray_to_rgb(png_ptr);
+	// Reduce RGB-48 down to RGB-24
+	if (bit_depth == 16)
+		png_set_strip_16(png_ptr);
 
-	case PNG_COLOR_TYPE_GRAY_ALPHA:
-		return component(row, x, 1, bit_depth, 2);
+	// Apply the above transformations
+	png_read_update_info(png_ptr, info_ptr);
 
-	case PNG_COLOR_TYPE_RGB_ALPHA:
-		return component(row, x, 3, bit_depth, 4);
-
-	default:
-		png_error(png_ptr, "pngtrace: invalid color type");
+	// Make sure we have a proper channel count - either 3 (RGB) or 4 (RGBA)
+	channels = png_get_channels(png_ptr, info_ptr);
+	if (channels < 2 || channels > 4)
+	{
+		fprintf(stderr, "pngtrace: image transform failed, got unexpected channel count %i\n", channels);
+		return false;
 	}
-	return 0;
+
+	// Allocate the row buffer
+	row = (png_bytep)png_malloc(png_ptr, png_get_rowbytes(png_ptr, info_ptr));
+	return true;
+}
+
+bool readpng_read_row(png_structp &png_ptr, png_infop &info_ptr, png_bytep row)
+{
+	LIBPNG_SETJMP(false)
+
+	png_read_row(png_ptr, row, NULL);
+	return true;
+}
+
+bool readpng_finish(png_structp &png_ptr, png_infop &info_ptr)
+{
+	LIBPNG_SETJMP(false)
+
+	png_read_end(png_ptr, NULL);
+	return true;
+}
+
+void readpng_cleanup(png_structp &png_ptr, png_infop &info_ptr, png_bytep &row)
+{
+	if (row)
+	{
+		png_free(png_ptr, row);
+		row = NULL;
+	}
+	if (png_ptr)
+	{
+		if (info_ptr)
+			png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+		else	png_destroy_read_struct(&png_ptr, NULL, NULL);
+		png_ptr = NULL;
+		info_ptr = NULL;
+	}
 }
 
 int main(int argc, const char **argv)
 {
-	// volatile because of setjmp
-	volatile int result = 1;
-	long x, y;
+	// File handles
 	FILE *in = NULL;
 	FILE *out = NULL;
-	// see above
-	volatile png_bytep row = NULL;
+
+	// PNG parsing data
+	int result = 1;
+	png_bytep row = NULL;
 	png_structp png_ptr = NULL;
 	png_infop info_ptr = NULL;
+	png_uint_32 width, height;
+	int channels;
+
+	// Color filter data
+	unsigned int color = 0xFFFFFFFF;
+	std::set<unsigned int> colors;
 
 	if (argc < 2)
 	{
-		fprintf(stderr, "Usage: pngtrace <input.png> [output.txt]\n");
+		fprintf(stderr, "Usage: pngtrace <input.png> <RRGGBB> [output.txt]\n");
 		fprintf(stderr, "Specify a filename of '--hollow' to scan for hollow nodes.\n");
+		fprintf(stderr, "Specify a filename of '--holes' to trace inside all holes.\n");
 		return 1;
 	}
 
@@ -474,94 +563,82 @@ int main(int argc, const char **argv)
 		fprintf(stderr, "pngtrace: could not open input file '%s', aborting.\n", argv[1]);
 		goto done;
 	}
-	printf("Loading PNG file into memory...\n");
+	printf("Loading image file...\n");
 
-	png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-	if (!png_ptr)
+	if (argc > 2)
+		color = std::strtoul(argv[2], nullptr, 16);
+
+	if (!readpng_init(in, png_ptr, info_ptr, width, height, channels, row))
 	{
-		fprintf(stderr, "pngtrace: out of memory allocating png_struct\n");
+		fprintf(stderr, "pngtrace: error reading file\n");
 		goto done;
 	}
 
-	info_ptr = png_create_info_struct(png_ptr);
-	if (!info_ptr)
+	pixels.alloc(width, height);
+	for (int py = 0; py < height; py++)
 	{
-		fprintf(stderr, "pngtrace: out of memory allocating png_info\n");
-		goto done;
-	}
-
-	if (setjmp(png_jmpbuf(png_ptr)) == 0)
-	{
-		png_uint_32 width, height;
-		int bit_depth, color_type, interlace_method, compression_method, filter_method;
-		png_bytep row_tmp;
-
-		png_init_io(png_ptr, in);
-		png_read_info(png_ptr, info_ptr);
-		row = (png_bytep)png_malloc(png_ptr, png_get_rowbytes(png_ptr, info_ptr));
-		row_tmp = row;
-
-		if (png_get_IHDR(png_ptr, info_ptr, &width, &height, &bit_depth, &color_type, &interlace_method, &compression_method, &filter_method))
+		if (!readpng_read_row(png_ptr, info_ptr, row))
 		{
-			png_uint_32 px, py;
-			if (interlace_method != PNG_INTERLACE_NONE)
-				png_error(png_ptr, "pngtrace: unsupported interlace");
-
-			pixels.alloc(width, height);
-
-			png_start_read_image(png_ptr);
-
-			for (py = 0; py < height; py++)
+			fprintf(stderr, "pngtrace: error reading image data\n");
+			goto done;
+		}
+		for (int px = 0; px < width; px++)
+		{
+			unsigned int c = get_rgb(channels, row, px);
+			if (c == 0xFFFFFFFF)
 			{
-				png_read_row(png_ptr, row_tmp, NULL);
-
-				for (px = 0; px < width; px++)
-					pixels.set(px, py, get_alpha(png_ptr, info_ptr, row_tmp, px));
+				printf("Partially transparent pixel %06X detected at %i,%i\n", c & 0xFFFFFF, px, py);
+				// clear out input color so we don't actually start tracing - make them fix it first
+				color = 0xFFFFFFFF;
 			}
-			row = NULL;
-			png_free(png_ptr, row_tmp);
-			result = 0;
-		}
-		else	png_error(png_ptr, "pngtrace: png_get_IHDR failed");
-	}
-	else
-	{
-		if (row != NULL)
-		{
-			png_bytep row_tmp = row;
-			row = NULL;
-			png_free(png_ptr, row_tmp);
+			// skip black pixels
+			if (c == 0)
+				continue;
+			// add it to our color list, and mark it in our canvas
+			colors.insert(c);
+			pixels.set(px, py, c == color);
 		}
 	}
-
+	// read and discard PNG footer
+	if (readpng_finish(png_ptr, info_ptr))
+		result = 0;
 done:
-	if (info_ptr)
-		png_destroy_info_struct(png_ptr, &info_ptr);
-	if (png_ptr)
-		png_destroy_read_struct(&png_ptr, NULL, NULL);
+	// clean up everything
+	readpng_cleanup(png_ptr, info_ptr, row);
 	if (in)
 		fclose(in);
 
+	// if we didn't reach the footer successfully, bail out now
 	if (result > 0)
 		return result;
 
-	if (argc > 2)
+	// if we didn't specify a color (or if we found a partially transparent pixel),
+	// print them all out so a proper one can be selected next run
+	if (color == 0xFFFFFFFF)
 	{
-		if (!strcmp(argv[2], "--hollow"))
+		printf("Colors found:\n");
+		for (auto iter = colors.begin(); iter != colors.end(); iter++)
+			printf("* %06X\n", *iter);
+		return 0;
+	}
+
+	if (argc > 3)
+	{
+		if (!strcmp(argv[3], "--hollow"))
 		{
 			printf("Scanning for hollow nodes...\n");
 			pixels.doHollow();
 			printf("Done!\n");
 			return 0;
 		}
-		if (!strcmp(argv[2], "--holes"))
+		if (!strcmp(argv[3], "--holes"))
 		{
 			printf("Tracing holes...\n");
 			pixels.doInvert();
 		}
 		else
 		{
-			out = fopen(argv[2], "wt");
+			out = fopen(argv[3], "wt");
 			if (!out)
 			{
 				fprintf(stderr, "pngtrace: could not create output file '%s'\n", argv[2]);
