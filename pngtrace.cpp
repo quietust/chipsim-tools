@@ -47,6 +47,23 @@ std::set<int> unrec;
 enum DIR { DIR_E, DIR_SE, DIR_S, DIR_SW, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_NONE };
 const char *dirs[9] = {"east", "southeast", "south", "southwest", "west", "northwest", "north", "northeast", "indeterminate"};
 const char dir_char[9] = {'6', '3', '2', '1', '4', '7', '8', '9', '?'};
+// coordinate adjustments for going around corners
+// 0 = upper-left
+// 1 = upper-right
+// 2 = bottom-left
+// 3 = bottom-right
+// 4 = invalid
+const int8_t dir_delta[8][8] = {
+	//E SE  S SW  W NW  N  NE
+	{ 4, 1, 1, 3, 4, 0, 0, 0}, // from E
+	{ 1, 4, 1, 3, 3, 4, 0, 0}, // from SE
+	{ 1, 1, 4, 3, 3, 2, 4, 3}, // from S
+	{ 1, 1, 3, 4, 3, 2, 2, 4}, // from SW
+	{ 4, 3, 3, 3, 4, 2, 2, 0}, // from W
+	{ 0, 4, 3, 3, 3, 4, 2, 0}, // from NW
+	{ 0, 1, 4, 2, 2, 2, 4, 0}, // from N
+	{ 0, 1, 1, 4, 2, 2, 0, 4}  // from NE
+};
 
 std::map<int,DIR> rules;
 bool discard_rules = false;
@@ -233,7 +250,7 @@ struct img_data
 		return true;
 	}
 
-	bool find_corner (int &x, int &y, bool check_only = false)
+	bool find_corner (int &x, int &y, int &dx, int &dy, bool check_only = false)
 	{
 		int ox = x, oy = y;
 		DIR dir = DIR_NONE;
@@ -261,8 +278,14 @@ struct img_data
 				printmask(last, dir);
 				return false;
 			}
+			DIR dir_prev = dir;
 			if (is_corner(x, y, dir, last))
+			{
+				int8_t delta = dir_delta[dir_prev][dir];
+				dx = (delta & 1) ? 1 : 0;
+				dy = (delta & 2) ? 1 : 0;
 				return true;
+			}
 			if (dir == DIR_NONE)
 			{
 				printf("Aborted.\n");
@@ -279,7 +302,8 @@ struct img_data
 	bool trace(FILE *out, int x, int y)
 	{
 		int ox, oy;
-		if (!find_corner(x, y, true))
+		int dx, dy;
+		if (!find_corner(x, y, dx, dy, true))
 		{
 			printf("Node at %i,%i did not start at recognized corner!\n", x, y);
 			return false;
@@ -288,10 +312,10 @@ struct img_data
 		oy = y;
 		do
 		{
-			if (out)
-				fprintf(out, "%i,%i\n", x, y);
-			if (!find_corner(x, y))
+			if (!find_corner(x, y, dx, dy))
 				return false;
+			if (out)
+				fprintf(out, "%i,%i\n", x + dx, y + dy);
 		} while (x != ox || y != oy);
 		if (out)
 			fprintf(out, "-1,-1\n");
