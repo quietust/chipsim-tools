@@ -32,8 +32,8 @@ Reads in all of the layers, figures out which segments are connected to each
 other (and assigns node IDs appropriately), and builds segdefs.js and
 transdefs.js files for ChipSim.
 
-By default, compiles in CMOS mode, but can be easily altered to run in NMOS
-mode instead.
+By default, this tool compiles in NMOS mode, but it can be easily altered to
+build in CMOS mode instead.
 
 Usage
 =====
