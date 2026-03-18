@@ -289,6 +289,11 @@ int main (int argc, char **argv)
 		if (err || (cur_t->c1 == -1) || (cur_t->c2 == -1))
 		{
 			fprintf(stderr, "Transistor %i (%s) had wrong number of terminals (%zi:%i,%i)\n", cur_t->id, cur_t->poly.toString().c_str(), diffs.size(), cur_t->c1, cur_t->c2);
+			if (diffs.size() > 2)
+			{
+				for (size_t j = 0; j < diffs.size(); j++)
+					fprintf(stderr, "Terminal %zi: %i (%s)\n", j + 1, diffs[j]->id, diffs[j]->poly.toString().c_str());
+			}
 			// assign dummy values
 			if (cur_t->c1 == -1)
 				cur_t->c1 = cur_t->ptype ? pwr : gnd;

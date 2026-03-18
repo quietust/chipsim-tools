@@ -406,9 +406,9 @@ unsigned int get_rgb(int channels, png_const_bytep row, png_uint_32 x)
 	// If we have 4 channels, there's an Alpha channel
 	if (channels == 4)
 		alpha = row[x * channels + 3];
-	// If it's fully transparent, just return black
+	// If it's fully transparent, just return white
 	if (alpha == 0)
-		return 0;
+		return 0xFFFFFF;
 
 	// Read colors
 	unsigned int rgb = (row[x * channels + 0] << 16) | (row[x * channels + 1] << 8) | (row[x * channels + 2] << 0);
@@ -585,18 +585,18 @@ int main(int argc, const char **argv)
 		for (int px = 0; px < width; px++)
 		{
 			unsigned int c = get_rgb(channels, row, px);
-			if (c == 0xFFFFFFFF)
+			if (c & 0xF0000000)
 			{
 				printf("Partially transparent pixel %06X detected at %i,%i\n", c & 0xFFFFFF, px, py);
 				// clear out input color so we don't actually start tracing - make them fix it first
 				color = 0xFFFFFFFF;
 			}
-			// skip black pixels
-			if (c == 0)
+			// skip white pixels
+			if (c == 0xFFFFFF)
 				continue;
 			// add it to our color list, and mark it in our canvas
 			colors.insert(c);
-			pixels.set(px, py, (color == c) || (color == 0));
+			pixels.set(px, py, (color == c) || (color == 0xFFFFFF));
 		}
 	}
 	// read and discard PNG footer
@@ -616,9 +616,14 @@ done:
 	// print them all out so a proper one can be selected next run
 	if (color == 0xFFFFFFFF)
 	{
-		printf("Colors found:\n");
-		for (auto iter = colors.begin(); iter != colors.end(); iter++)
-			printf("* %06X\n", *iter);
+		if (colors.size() == 0)
+			printf("No colors found?\n");
+		else
+		{
+			printf("Colors found:\n");
+			for (auto iter = colors.begin(); iter != colors.end(); iter++)
+				printf("* %06X\n", *iter);
+		}
 		return 0;
 	}
 

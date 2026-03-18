@@ -12,8 +12,8 @@ and save the list of learned rules (or 'x' to abort without saving). The next
 time you run it, the previously stored rules will be automatically imported.
 
 Input images can contain multiple sets of nodes in different colors - specify
-the RGB value you want to trace, or specify 000000 to include all nodes.
-All transparent regions are treated as black, and the image's background
+the RGB value you want to trace, or specify FFFFFF to include all nodes.
+All transparent regions are treated as white, and the image's background
 color is ignored. There must not be any partially-transparent pixels.
 
 Currently does NOT recognize hollow nodes during tracing - run with the
