@@ -487,7 +487,7 @@ bool readpng_init (FILE *infile, png_structp &png_ptr, png_infop &info_ptr, png_
 
 	// Make sure we have a proper channel count - either 3 (RGB) or 4 (RGBA)
 	channels = png_get_channels(png_ptr, info_ptr);
-	if (channels < 2 || channels > 4)
+	if (channels < 3 || channels > 4)
 	{
 		fprintf(stderr, "pngtrace: image transform failed, got unexpected channel count %i\n", channels);
 		return false;
