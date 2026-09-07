@@ -554,6 +554,7 @@ int main(int argc, const char **argv)
 		fprintf(stderr, "Usage: pngtrace <input.png> <RRGGBB> [output.txt]\n");
 		fprintf(stderr, "Specify a filename of '--hollow' to scan for hollow nodes.\n");
 		fprintf(stderr, "Specify a filename of '--holes' to trace inside all holes.\n");
+		fprintf(stderr, "Specify a color of FFFFFF to match all colors.\n");
 		return 1;
 	}
 
@@ -622,7 +623,7 @@ done:
 		{
 			printf("Colors found:\n");
 			for (auto iter = colors.begin(); iter != colors.end(); iter++)
-				printf("* %06X\n", *iter);
+				printf("* %06X [\x1b[48;2;%i;%i;%im   \x1b[49m]\n", *iter, (*iter >> 16) & 0xFF, (*iter >> 8) & 0xFF, *iter & 0xFF);
 		}
 		return 0;
 	}
