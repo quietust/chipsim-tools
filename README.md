@@ -32,25 +32,25 @@ Reads in all of the layers, figures out which segments are connected to each
 other (and assigns node IDs appropriately), and builds segdefs.js and
 transdefs.js files for ChipSim.
 
-By default, this tool compiles in NMOS mode, but it can be easily altered to
-build in CMOS mode instead.
+By default, this tool compiles in CMOS mode, but it can be easily altered to
+build in NMOS mode instead.
 
 Usage
 =====
-Save each layer image as a PNG file, either with a black background or a
+Save each layer image as a PNG file, either with a white background or a
 transparent background, then use "pngtrace" to vectorize each set of nodes
 into ".dat" files with the following names:
-* Upper Metal: 'metal2_pwr' + 'metal2_gnd' + 'metal2' + 'vias2'
-* Lower Metal: 'metal1_pwr' + 'metal1_gnd' + 'metal1' + 'vias1'
-* Single Metal: 'metal_pwr' + 'metal_gnd' + 'metal' + 'vias'
-* Poly: 'poly_pwr' + 'poly_gnd' + 'poly' + 'buried'
-* Diffusion: 'diff_pwr' + 'diff_gnd' + 'diff'
-* Transistors: 'trans'/ 'trans_n' + 'trans_p'
+* Upper Metal: 'metal2\_pwr' + 'metal2\_gnd' + 'metal2' + 'vias2'
+* Lower Metal: 'metal1\_pwr' + 'metal1\_gnd' + 'metal1' + 'vias1'
+* Single Metal: 'metal\_pwr' + 'metal\_gnd' + 'metal' + 'vias'
+* Poly: 'poly\_pwr' + 'poly\_gnd' + 'poly' + 'buried'
+* Diffusion: 'diff\_pwr' + 'diff\_gnd' + 'diff'
+* Transistors: 'trans' / 'trans\_n' + 'trans\_p'
 
 Currently, a maximum of 2 metal layers are supported, with the upper metal
 layer only forming connections to the lower metal layer. For chips with only
 one metal layer, use the "Single Metal" layer files. The 'buried' layer is
-only supported with NMOS chips, and the 'trans_p' layer is only supported
+only supported with NMOS chips, and the 'trans\_p' layer is only supported
 with CMOS chips.
 
 At least one set of 'pwr' and 'gnd' nodes must be provided.
