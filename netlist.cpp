@@ -9,7 +9,7 @@
 #include "polygon.h"
 
 // Uncomment this to enable detection and removal of depletion pullups
-#define NMOS
+//#define NMOS
 
 #include <vector>
 #include <map>
@@ -381,6 +381,9 @@ int main (int argc, char **argv)
 			}
 		}
 #endif
+		// Detect transistors that would be metastable
+		if ((cur_t->gate == cur_t->c1) && (cur_t->c2 == (cur_t->ptype ? pwr : gnd)))
+			printf("Faulty transistor t%i at %s\n", cur_t->id, cur_t->bbox.toString().c_str());
 	}
 	diffs.clear();
 #ifdef NMOS
