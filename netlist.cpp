@@ -11,8 +11,14 @@
 // Uncomment this to enable detection and removal of depletion pullups
 //#define NMOS
 
+// Uncomment to collapse all node IDs to be consecutive
+// Only recommended for the final run, since it will invalidate
+// the contents of nodenames.js
+//#define CONSECUTIVE
+
 #include <vector>
 #include <map>
+#include <set>
 using std::vector;
 
 // don't output first/last lines of segdefs.js/transdefs.js
@@ -200,7 +206,18 @@ int main (int argc, char **argv)
 			cur->layer = LAYER_PROTECT;
 	}
 
-	// TODO - add an option to go through all of the nodes and make the ID numbers consecutive
+#ifdef CONSECUTIVE
+	printf("Collapsing unused node IDs\n");
+	std::set<int> ids;
+	for (size_t i = 0; i < diff_end; i++)
+		ids.insert(nodes[i]->id);
+	int new_node = FIRST_SEG_ID;
+	for (auto iter = ids.begin(); iter != ids.end(); ++iter, ++new_node)
+		if (*iter != new_node)
+			for (size_t i = 0; i < diff_end; i++)
+				if (nodes[i]->id == *iter)
+					nodes[i]->id = new_node;
+#endif
 
 	size_t trans_p_start;
 	readnodes<transistor>("trans_n.dat", transistors, LAYER_SPECIAL);
