@@ -8,8 +8,15 @@
 #include <stdio.h>
 #include "polygon.h"
 
-// Uncomment this to enable detection and removal of depletion pullups
+// Select the type of chip to analyze
+// NMOS assumes all transistors are N-type and enables special logic for depletion pullups
+// CMOS distinguishes N-type and P-type transistors and disables depletion logic
 //#define NMOS
+//#define CMOS
+
+#if !defined(NMOS) && !defined(CMOS)
+#error Must enable either NMOS or CMOS mode!
+#endif
 
 // Uncomment to collapse all node IDs to be consecutive
 // Only recommended for the final run, since it will invalidate
@@ -21,12 +28,15 @@
 #include <set>
 using std::vector;
 
-// don't output first/last lines of segdefs.js/transdefs.js
+// don't output first/last lines of segdefs.js/transdefs.js,
+// in case this output is going to be merged into another sim
 //#define OUTPUT_PARTIAL_JS
 
 // Uncomment to include transistors as a visible segdefs layer
 //#define SEGDEFS_INCLUDE_TRANS
 
+// Start numbering segdefs/transdefs somewhere other than 1, in case the
+// resulting data is going to be embedded in another sim (or vice-versa)
 #ifndef FIRST_SEG_ID
 #define	FIRST_SEG_ID	1
 #endif
@@ -124,7 +134,7 @@ int main (int argc, char **argv)
 	readnodes<node>("metal1_pwr.dat", nodes, LAYER_METAL, pwr);
 	readnodes<node>("metal1_gnd.dat", nodes, LAYER_METAL, gnd);
 	readnodes<node>("metal1.dat", nodes, LAYER_METAL);
-	// Legacy support for NMOS chips
+	// Support for NMOS or single-metal CMOS chips
 	readnodes<node>("metal_pwr.dat", nodes, LAYER_METAL, pwr);
 	readnodes<node>("metal_gnd.dat", nodes, LAYER_METAL, gnd);
 	readnodes<node>("metal.dat", nodes, LAYER_METAL);
@@ -172,7 +182,7 @@ int main (int argc, char **argv)
 
 	// Next, use 'vias1' to link 'metal1' to poly/diff
 	readnodes<node>("vias1.dat", vias, LAYER_SPECIAL);
-	// Legacy support for NMOS chips
+	// Support for NMOS and single-metal CMOS chips
 	readnodes<node>("vias.dat", vias, LAYER_SPECIAL);
 
 	printf("Parsing metal1 nodes %zi thru %zi with %zi vias\n", metal1_start, metal1_end - 1, vias.size());
@@ -505,12 +515,13 @@ int main (int argc, char **argv)
 	for (size_t i = 0; i < nodes.size(); i++)
 	{
 		cur = nodes[i];
-		// skip powered/grounded metal nodes
-		// CMOS does not include pullup/pulldown state in segdefs
+		// skip powered/grounded metal nodes, since they're enormous
+		// powered/grounded poly is fine, and powered/grounded diff is mandatory
 		if (!((cur->layer == LAYER_METAL) && ((cur->id == pwr) || (cur->id == gnd))))
 #ifdef NMOS
 			fprintf(out, "[%i,'%c',%i,%s],\n", cur->id, cur->pull, cur->layer, cur->poly.toString().c_str());
-#else
+#elif CMOS
+			// CMOS omits pullup/pulldown state
 			fprintf(out, "[%i,%i,%s],\n", cur->id, cur->layer, cur->poly.toString().c_str());
 #endif
 		delete cur;
@@ -523,10 +534,11 @@ int main (int argc, char **argv)
 		cur_t = transistors[i];
 		if (cur_t == NULL)
 			continue;
-		// reassign transistor ID to match its Gate
+		// emit segdef using the transistor's gate node ID
 #ifdef NMOS
 		fprintf(out, "[%i,'%c',%i,%s],\n", cur_t->gate, cur_t->pull, cur_t->layer, cur_t->poly.toString().c_str());
-#else
+#elif CMOS
+		// CMOS omits pullup/pulldown state
 		fprintf(out, "[%i,%i,%s],\n", cur_t->gate, cur_t->layer, cur_t->poly.toString().c_str());
 #endif
 		delete cur_t;

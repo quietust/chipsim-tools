@@ -8,17 +8,20 @@
 #ifndef POLYGON_H
 #define POLYGON_H
 
-// Height of the layer images, so we can flip them vertically
-// (it was simpler to hardcode it than to figure it out dynamically)
+// Old versions of chipsim render the canvas upside-down, so this
+// flips the image upside-down given a desired chip height
+// (since it's easier than calculating the chip height at runtime)
 // The 2A03 used a height of 6256 and upscale 2
 // Leave undefined in order to disable vertical flipping entirely
 //#define	CHIP_HEIGHT	5000
 
-// Upscale coordinates during import
+// Upscale coordinates during import, in case the layer images
+// were of extremely low resolution
 #ifndef UPSCALE
 #define	UPSCALE	1
 #endif
-// Downscale coordinates during export
+// Downscale coordinates during export, in case the layer images
+// were of extremely high resolution
 #ifndef DOWNSCALE
 #define DOWNSCALE 1
 #endif
@@ -362,10 +365,10 @@ bool readnodes (const char *filename, std::vector<T *> &nodes, int layer, int fo
 		}
 		else
 		{
-			// since the ChipSim canvas is upside-down
-			// (0,0 is at bottom-left instead of top-left)
-			// we flip the image vertically
 #ifdef	CHIP_HEIGHT
+			// older ChipSim versions had an upside-down canvas
+			// with 0,0 at bottom-left instead of top-left
+			// so flip the image vertically here
 			n->poly.add(x * UPSCALE, (CHIP_HEIGHT - y) * UPSCALE);
 #else
 			n->poly.add(x * UPSCALE, y * UPSCALE);
